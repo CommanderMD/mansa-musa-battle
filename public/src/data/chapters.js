@@ -19,9 +19,12 @@ export const MUSEUM_URL =
  * choice (you can only focus one — the other chips you). reward = { op:'mul'|'add'|'weapon', v }.
  */
 const barrels = (dist, items) => ({ type: 'barrels', dist, items });
+// CROWD barrels — grow the unit count.
 const mul = (hp, v) => ({ hp, reward: { op: 'mul', v } });
 const add = (hp, v) => ({ hp, reward: { op: 'add', v } });
-const arrowsUp = (hp) => ({ hp, reward: { op: 'weapon' } });
+// WEAPON barrels — multiply arrows-per-unit (firepower). bowMul ×N, arrowAdd +N.
+const bowMul = (hp, v = 2) => ({ hp, reward: { op: 'arrow', mode: 'mul', v } });
+const arrowAdd = (hp, v = 1) => ({ hp, reward: { op: 'arrow', mode: 'add', v } });
 const enemy = (dist, count, label) => ({ type: 'enemy', dist, count, label });
 const pickup = (dist, kind, side) => ({ type: 'pickup', dist, kind, side });
 
@@ -39,16 +42,17 @@ export const CHAPTER1 = {
       length: 4300,
       track: [
         pickup(420, 'gold', 'L'),
-        // tutorial pair: safe +12 (hp4, breakable now) vs greedy x3 (hp9, needs a bigger crowd)
-        barrels(750, [{ side: 'L', ...add(4, 12) }, { side: 'R', ...mul(9, 3) }]),
+        // first choice: MORE UNITS (+12) vs MORE ARROWS/unit (x2 bows)
+        barrels(750, [{ side: 'L', ...add(4, 12) }, { side: 'R', ...bowMul(5, 2) }]),
         enemy(1250, 8, 'Bandits'),
         pickup(1550, 'crystal', 'R'),
-        // now ~breakable: greedy x3 (hp9) vs safe +14 (hp4)
-        barrels(1900, [{ side: 'L', ...mul(9, 3) }, { side: 'R', ...add(4, 14) }]),
+        // safe weapon (+1 arrow) vs greedy crowd (x3 units)
+        barrels(1900, [{ side: 'L', ...arrowAdd(4, 1) }, { side: 'R', ...mul(9, 3) }]),
         enemy(2450, 16, 'Raiders'),
         pickup(2750, 'gold', 'R'),
-        barrels(3050, [{ side: 'C', ...arrowsUp(4) }]), // ARROWS+ upgrade
-        barrels(3450, [{ side: 'L', ...add(4, 20) }, { side: 'R', ...mul(10, 2) }]),
+        barrels(3050, [{ side: 'C', ...add(4, 18) }]), // guaranteed reinforcements
+        // x2 units vs x2 bows — the pure crowd-vs-weapon fork
+        barrels(3450, [{ side: 'L', ...mul(10, 2) }, { side: 'R', ...bowMul(9, 2) }]),
         enemy(3950, 26, 'War Party'),
       ],
       boss: { count: 55, name: 'Slaver Caravan', threshold: 45 },
@@ -60,17 +64,17 @@ export const CHAPTER1 = {
       startCrowd: 10,
       length: 5100,
       track: [
-        barrels(650, [{ side: 'L', ...add(4, 12) }, { side: 'R', ...mul(9, 3) }]),
+        barrels(650, [{ side: 'L', ...mul(4, 2) }, { side: 'R', ...bowMul(4, 2) }]),
         enemy(1150, 12, 'Raiders'),
         pickup(1450, 'crystal', 'L'),
-        barrels(1750, [{ side: 'L', ...mul(10, 3) }, { side: 'R', ...add(4, 16) }]),
+        barrels(1750, [{ side: 'L', ...mul(10, 3) }, { side: 'R', ...arrowAdd(5, 1) }]),
         pickup(2050, 'gold', 'R'),
         enemy(2400, 22, 'Desert Wolves'),
-        barrels(2750, [{ side: 'C', ...arrowsUp(4) }]),
+        barrels(2750, [{ side: 'L', ...add(4, 18) }, { side: 'R', ...bowMul(10, 2) }]),
         barrels(3150, [{ side: 'L', ...mul(12, 3) }, { side: 'R', ...mul(7, 2) }]),
         enemy(3650, 38, 'War Party'),
         pickup(3950, 'crystal', 'R'),
-        barrels(4250, [{ side: 'L', ...add(5, 25) }, { side: 'R', ...mul(13, 2) }]),
+        barrels(4250, [{ side: 'L', ...arrowAdd(6, 2) }, { side: 'R', ...mul(13, 3) }]),
         enemy(4750, 52, 'Marauders'),
       ],
       boss: { count: 95, name: 'Desert Warlord', threshold: 75 },
@@ -82,17 +86,17 @@ export const CHAPTER1 = {
       startCrowd: 12,
       length: 5700,
       track: [
-        barrels(650, [{ side: 'L', ...add(4, 14) }, { side: 'R', ...mul(9, 3) }]),
+        barrels(650, [{ side: 'L', ...add(4, 16) }, { side: 'R', ...bowMul(4, 2) }]),
         enemy(1150, 16, 'Raiders'),
         pickup(1450, 'gold', 'L'),
-        barrels(1750, [{ side: 'C', ...arrowsUp(4) }]),
-        barrels(2150, [{ side: 'L', ...mul(11, 3) }, { side: 'R', ...add(5, 20) }]),
+        barrels(1750, [{ side: 'L', ...arrowAdd(5, 1) }, { side: 'R', ...add(5, 22) }]),
+        barrels(2150, [{ side: 'L', ...mul(11, 3) }, { side: 'R', ...bowMul(10, 2) }]),
         enemy(2600, 30, 'War Party'),
         pickup(2900, 'crystal', 'R'),
-        // the brief's greedy keg: x10 (hp14, needs a big crowd) vs safe +25 (hp4)
-        barrels(3250, [{ side: 'L', ...mul(14, 10) }, { side: 'R', ...add(4, 25) }]),
+        // the brief's greedy keg: x10 units (hp14) vs safe x2 bows (hp6)
+        barrels(3250, [{ side: 'L', ...mul(14, 10) }, { side: 'R', ...bowMul(6, 2) }]),
         enemy(3750, 55, 'Marauders'),
-        barrels(4050, [{ side: 'C', ...arrowsUp(5) }]),
+        barrels(4050, [{ side: 'L', ...arrowAdd(6, 2) }, { side: 'R', ...mul(12, 3) }]),
         barrels(4450, [{ side: 'L', ...add(6, 30) }, { side: 'R', ...mul(16, 3) }]),
         enemy(4950, 80, 'Horde'),
       ],

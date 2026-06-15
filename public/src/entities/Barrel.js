@@ -13,10 +13,13 @@
 import { LANE, PALETTE, depthScale, laneHalfWidth, hex } from '../config.js';
 import { Juice } from '../systems/juice.js';
 
+// Weapon barrels (op:'arrow') read blue/crystal with an arrow icon; crowd barrels read
+// gold/green — so the two upgrade paths are instantly distinguishable on the lane.
+const isWeapon = (r) => r.op === 'arrow';
 const rewardColor = (r) =>
-  r.op === 'weapon' ? PALETTE.crystal : r.op === 'mul' ? PALETTE.green : PALETTE.gold;
+  isWeapon(r) ? PALETTE.crystal : r.op === 'mul' ? PALETTE.green : PALETTE.gold;
 const rewardLabel = (r) =>
-  r.op === 'weapon' ? 'ARROWS+' : r.op === 'mul' ? `x${r.v}` : `+${r.v}`;
+  isWeapon(r) ? (r.mode === 'mul' ? `🏹x${r.v}` : `🏹+${r.v}`) : r.op === 'mul' ? `x${r.v}` : `+${r.v}`;
 
 export class Barrel {
   constructor(scene, side, hp, reward) {
@@ -30,13 +33,15 @@ export class Barrel {
     this.done = false;
     this.rewarded = false;
 
+    this.isWeapon = isWeapon(reward);
     this.sprite = scene.add.image(0, 0, 'barrel').setOrigin(0.5, 0.85).setDepth(330);
+    if (this.isWeapon) this.sprite.setTint(0x6fb6d6); // steel-blue armory keg
 
     // Reward banner on the body.
     this.rewardTxt = scene.add
       .text(0, 0, rewardLabel(reward), {
-        fontFamily: 'Georgia, serif', fontSize: '17px', fontStyle: 'bold',
-        color: '#fff', stroke: hex(PALETTE.ink), strokeThickness: 4,
+        fontFamily: 'Georgia, serif', fontSize: this.isWeapon ? '15px' : '17px', fontStyle: 'bold',
+        color: this.isWeapon ? '#dff6ff' : '#fff', stroke: hex(PALETTE.ink), strokeThickness: 4,
       })
       .setOrigin(0.5)
       .setDepth(332);
@@ -68,7 +73,10 @@ export class Barrel {
     Juice.punch(this.scene, this.hpBg, 1.3, 90);
     this.scene.tweens.add({ targets: this.sprite, x: this.sprite.x + Phaser.Math.Between(-2, 2), duration: 40, yoyo: true });
     this.sprite.setTintFill(0xffffff);
-    this.scene.time.delayedCall(40, () => this.sprite && this.sprite.clearTint());
+    this.scene.time.delayedCall(40, () => {
+      if (!this.sprite) return;
+      if (this.isWeapon) this.sprite.setTint(0x6fb6d6); else this.sprite.clearTint();
+    });
     Juice.burst(this.scene, this.sprite.x, this.y - 20 * depthScale(this.y), 0xcaa15a, 4, 90);
     if (this.hp <= 0) { this.dead = true; return true; }
     return false;

@@ -28,15 +28,23 @@ at runtime — zero binary assets), so it deploys cleanly on Cloudflare Workers 
 
 The column auto-advances and auto-shoots; you control **which barrel your archers focus**.
 Each barrel shows two numbers: a **hit-count (HP)** that ticks down as arrows bite, and a
-**reward** (`x10` / `+25` / `ARROWS+`). Bigger crowd = more arrows / faster fire, so a large
-army breaks high-HP kegs in time. Break the safe low-HP keg for sure, or gamble on the greedy
-high-HP keg for a big multiply — but a barrel that reaches the column **alive smashes in and
-costs units**, so overcommitting to a keg you can't break is how you lose.
+**reward**. There are **two barrel types**:
+
+- **CROWD kegs** (gold/green) — grow the army: `x3`, `x2`, `+25` **units**.
+- **WEAPON kegs** (blue, 🏹) — multiply **arrows-per-unit**: `🏹x2` bows, `🏹+1` arrow.
+  Every archer starts at **1 arrow/shot**; weapon kegs raise it (1 → 2 → 4 …).
+
+**Total firepower = units × arrows-per-unit**, so the two paths combine. More units also means
+more bodies to survive enemy clashes; more arrows-per-unit means each archer hits harder — a
+real strategic choice each run. Bigger firepower breaks high-HP kegs in time. Break the safe
+low-HP keg for sure, or gamble on a greedy high-HP keg — but a barrel that reaches the column
+**alive smashes in and costs units**, so overcommitting to a keg you can't break is how you lose.
 
 ### The loop
 1. **World map** — pick an unlocked node, press the gold **PLAY** button.
-2. **Battle** — shoot down reward barrels (`x2 x3 +25` and `ARROWS+`), grab gold chests +
-   crystals, and clash with enemy waves (top-center counter = enemy strength).
+2. **Battle** — shoot down reward barrels — gold **crowd kegs** (`x3 +25` units) and blue
+   **weapon kegs** (`🏹x2` arrows/unit) — grab gold chests + crystals, and clash with enemy
+   waves (top-center counter = enemy strength).
 3. **Boss** — a large formation at the end needs a threshold-size crowd.
 4. **Victory** — winged banner, reward tiles, and a Mansa Musa dossier card. The next level
    unlocks. **Defeat** — retry.

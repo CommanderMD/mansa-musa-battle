@@ -144,16 +144,19 @@ const BALANCE = {
   renderCap: 110, // max unit sprites drawn; logical count can exceed this
   scrollSpeed: 150, // world px/sec the lane flows toward the player
   steerLerp: 0.18, // how snappily the crowd follows the finger
-  // Bow tiers (the Mali archers' weapon). dmg = per-crowd-unit damage/tick in an enemy
-  // clash (kept as Lanchester square-law: the crowd wins when C/E > sqrt(enemyDmgCoeff/dmg),
-  // so a modest size edge wins decisively). Tier also boosts barrel fire-rate + arrow count.
+  // Bow tiers — purely cosmetic now (name + arrow color), indexed by arrows-per-unit.
   weaponTiers: [
-    { name: 'Short Bows', dmg: 0.16, color: 0xf6d77a },
-    { name: 'War Bows', dmg: 0.22, color: 0xf3a64b },
-    { name: 'Composite Bows', dmg: 0.28, color: 0xe8b43c },
-    { name: 'Royal Archers', dmg: 0.36, color: 0x9be8ff },
+    { name: 'Short Bows', color: 0xf6d77a },
+    { name: 'War Bows', color: 0xf3a64b },
+    { name: 'Composite Bows', color: 0xe8b43c },
+    { name: 'Double Bows', color: 0x9be8ff },
+    { name: 'Royal Volley', color: 0xbff4ff },
   ],
-  enemyDmgCoeff: 0.07, // per-enemy-unit damage/tick dealt to crowd (win boundary C/E ≈ 0.66)
+  maxArrowsPerUnit: 16, // cap on the weapon-upgrade path
+  // Enemy clash (kept Lanchester square-law). yourDmg scales with FIREPOWER = count×apu, so
+  // weapon barrels help clear waves too — but only COUNT adds bodies to absorb enemy losses.
+  clashDmgPerFirepower: 0.16, // at apu=1 this matches the old tier-0 damage
+  enemyDmgCoeff: 0.07, // per-enemy-unit damage/tick dealt to crowd
   clashTickMs: 130, // attrition resolution cadence during a clash
 
   // Archery: continuous volleys fired up the lane at descending barrels. More crowd +
@@ -163,14 +166,12 @@ const BALANCE = {
   // whole pairs — so greedy high-HP kegs are a real gamble early and a reward once you snowball.
   arrow: { speed: 700, lifespanMs: 1400 },
   fire: {
-    baseInterval: 430, // ms between volleys at crowd 0 / tier 0
+    baseInterval: 430, // ms between volleys at crowd 0
     intervalPerUnit: 1.5, // faster as the crowd grows
-    intervalPerTier: 50,
     minInterval: 150,
     arrowsBase: 1,
-    arrowsPerUnits: 14, // +1 arrow per this many units
-    arrowsPerTier: 1,
-    arrowsMax: 12,
+    arrowsPerUnits: 14, // +1 base arrow per this many units (then ×arrowsPerUnit)
+    arrowsMaxVisual: 20, // sprite cap; beyond this, each arrow carries extra hit-power
   },
   // Barrels roll DOWN faster than the lane flows, so you have limited time to shoot them.
   barrelSpeedMul: 1.9,
@@ -201,9 +202,12 @@ const MUSEUM_URL =
  * choice (you can only focus one — the other chips you). reward = { op:'mul'|'add'|'weapon', v }.
  */
 const barrels = (dist, items) => ({ type: 'barrels', dist, items });
+// CROWD barrels — grow the unit count.
 const mul = (hp, v) => ({ hp, reward: { op: 'mul', v } });
 const add = (hp, v) => ({ hp, reward: { op: 'add', v } });
-const arrowsUp = (hp) => ({ hp, reward: { op: 'weapon' } });
+// WEAPON barrels — multiply arrows-per-unit (firepower). bowMul ×N, arrowAdd +N.
+const bowMul = (hp, v = 2) => ({ hp, reward: { op: 'arrow', mode: 'mul', v } });
+const arrowAdd = (hp, v = 1) => ({ hp, reward: { op: 'arrow', mode: 'add', v } });
 const enemy = (dist, count, label) => ({ type: 'enemy', dist, count, label });
 const pickup = (dist, kind, side) => ({ type: 'pickup', dist, kind, side });
 
@@ -221,16 +225,17 @@ const CHAPTER1 = {
       length: 4300,
       track: [
         pickup(420, 'gold', 'L'),
-        // tutorial pair: safe +12 (hp4, breakable now) vs greedy x3 (hp9, needs a bigger crowd)
-        barrels(750, [{ side: 'L', ...add(4, 12) }, { side: 'R', ...mul(9, 3) }]),
+        // first choice: MORE UNITS (+12) vs MORE ARROWS/unit (x2 bows)
+        barrels(750, [{ side: 'L', ...add(4, 12) }, { side: 'R', ...bowMul(5, 2) }]),
         enemy(1250, 8, 'Bandits'),
         pickup(1550, 'crystal', 'R'),
-        // now ~breakable: greedy x3 (hp9) vs safe +14 (hp4)
-        barrels(1900, [{ side: 'L', ...mul(9, 3) }, { side: 'R', ...add(4, 14) }]),
+        // safe weapon (+1 arrow) vs greedy crowd (x3 units)
+        barrels(1900, [{ side: 'L', ...arrowAdd(4, 1) }, { side: 'R', ...mul(9, 3) }]),
         enemy(2450, 16, 'Raiders'),
         pickup(2750, 'gold', 'R'),
-        barrels(3050, [{ side: 'C', ...arrowsUp(4) }]), // ARROWS+ upgrade
-        barrels(3450, [{ side: 'L', ...add(4, 20) }, { side: 'R', ...mul(10, 2) }]),
+        barrels(3050, [{ side: 'C', ...add(4, 18) }]), // guaranteed reinforcements
+        // x2 units vs x2 bows — the pure crowd-vs-weapon fork
+        barrels(3450, [{ side: 'L', ...mul(10, 2) }, { side: 'R', ...bowMul(9, 2) }]),
         enemy(3950, 26, 'War Party'),
       ],
       boss: { count: 55, name: 'Slaver Caravan', threshold: 45 },
@@ -242,17 +247,17 @@ const CHAPTER1 = {
       startCrowd: 10,
       length: 5100,
       track: [
-        barrels(650, [{ side: 'L', ...add(4, 12) }, { side: 'R', ...mul(9, 3) }]),
+        barrels(650, [{ side: 'L', ...mul(4, 2) }, { side: 'R', ...bowMul(4, 2) }]),
         enemy(1150, 12, 'Raiders'),
         pickup(1450, 'crystal', 'L'),
-        barrels(1750, [{ side: 'L', ...mul(10, 3) }, { side: 'R', ...add(4, 16) }]),
+        barrels(1750, [{ side: 'L', ...mul(10, 3) }, { side: 'R', ...arrowAdd(5, 1) }]),
         pickup(2050, 'gold', 'R'),
         enemy(2400, 22, 'Desert Wolves'),
-        barrels(2750, [{ side: 'C', ...arrowsUp(4) }]),
+        barrels(2750, [{ side: 'L', ...add(4, 18) }, { side: 'R', ...bowMul(10, 2) }]),
         barrels(3150, [{ side: 'L', ...mul(12, 3) }, { side: 'R', ...mul(7, 2) }]),
         enemy(3650, 38, 'War Party'),
         pickup(3950, 'crystal', 'R'),
-        barrels(4250, [{ side: 'L', ...add(5, 25) }, { side: 'R', ...mul(13, 2) }]),
+        barrels(4250, [{ side: 'L', ...arrowAdd(6, 2) }, { side: 'R', ...mul(13, 3) }]),
         enemy(4750, 52, 'Marauders'),
       ],
       boss: { count: 95, name: 'Desert Warlord', threshold: 75 },
@@ -264,17 +269,17 @@ const CHAPTER1 = {
       startCrowd: 12,
       length: 5700,
       track: [
-        barrels(650, [{ side: 'L', ...add(4, 14) }, { side: 'R', ...mul(9, 3) }]),
+        barrels(650, [{ side: 'L', ...add(4, 16) }, { side: 'R', ...bowMul(4, 2) }]),
         enemy(1150, 16, 'Raiders'),
         pickup(1450, 'gold', 'L'),
-        barrels(1750, [{ side: 'C', ...arrowsUp(4) }]),
-        barrels(2150, [{ side: 'L', ...mul(11, 3) }, { side: 'R', ...add(5, 20) }]),
+        barrels(1750, [{ side: 'L', ...arrowAdd(5, 1) }, { side: 'R', ...add(5, 22) }]),
+        barrels(2150, [{ side: 'L', ...mul(11, 3) }, { side: 'R', ...bowMul(10, 2) }]),
         enemy(2600, 30, 'War Party'),
         pickup(2900, 'crystal', 'R'),
-        // the brief's greedy keg: x10 (hp14, needs a big crowd) vs safe +25 (hp4)
-        barrels(3250, [{ side: 'L', ...mul(14, 10) }, { side: 'R', ...add(4, 25) }]),
+        // the brief's greedy keg: x10 units (hp14) vs safe x2 bows (hp6)
+        barrels(3250, [{ side: 'L', ...mul(14, 10) }, { side: 'R', ...bowMul(6, 2) }]),
         enemy(3750, 55, 'Marauders'),
-        barrels(4050, [{ side: 'C', ...arrowsUp(5) }]),
+        barrels(4050, [{ side: 'L', ...arrowAdd(6, 2) }, { side: 'R', ...mul(12, 3) }]),
         barrels(4450, [{ side: 'L', ...add(6, 30) }, { side: 'R', ...mul(16, 3) }]),
         enemy(4950, 80, 'Horde'),
       ],
@@ -729,7 +734,8 @@ class Crowd {
     this.count = count;
     this.centerX = LANE.centerX;
     this.targetX = LANE.centerX;
-    this.weaponTier = 0;
+    this.arrowsPerUnit = 1; // every archer starts firing 1 arrow/shot; weapon barrels raise this
+    this.weaponTier = 0; // derived display tier (bow name + arrow color) from arrowsPerUnit
     this.units = []; // sprite pool
     this.t = 0; // time accumulator for bob
 
@@ -792,20 +798,21 @@ class Crowd {
 
   get alive() { return this.count > 0; }
 
-  /* Apply a gate operation and play the juice. Returns the new count. */
+  /* Apply a barrel reward and play the juice. Returns the new count.
+   * CROWD rewards (add/sub/mul) change unit count; WEAPON rewards (op:'arrow')
+   * change arrows-per-unit. Firepower = count × arrowsPerUnit, so the two combine. */
   applyOp(op, x, y) {
+    if (op.op === 'arrow') { this.applyArrow(op, x, y); return this.count; }
+
     const before = this.count;
     if (op.op === 'add') this.count += op.v;
     else if (op.op === 'sub') this.count = Math.max(0, this.count - op.v);
     else if (op.op === 'mul') this.count = Math.round(this.count * op.v);
-    else if (op.op === 'weapon') this.upgradeWeapon();
 
     const good = this.count >= before && op.op !== 'sub';
-    if (op.op !== 'weapon') {
-      const label = op.op === 'add' ? `+${op.v}` : op.op === 'sub' ? `-${op.v}` : `x${op.v}`;
-      Juice.popText(this.scene, x, y - 30, label, good ? '#ffe9a8' : '#ff8d7a', 38);
-    }
-    if (good && op.op !== 'weapon') {
+    const label = op.op === 'add' ? `+${op.v}` : op.op === 'sub' ? `-${op.v}` : `x${op.v}`;
+    Juice.popText(this.scene, x, y - 30, label, good ? '#ffe9a8' : '#ff8d7a', 38);
+    if (good) {
       Juice.burst(this.scene, this.centerX, LANE.crowdY - 20, PALETTE.goldLight, 18, 220);
       Juice.flash(this.scene, 0xffe9a8, 80, 0.25);
       Juice.punch(this.scene, this.badge, 1.5);
@@ -818,12 +825,18 @@ class Crowd {
     return this.count;
   }
 
-  upgradeWeapon() {
-    this.weaponTier = Math.min(BALANCE.weaponTiers.length - 1, this.weaponTier + 1);
-    const w = BALANCE.weaponTiers[this.weaponTier];
-    Juice.popText(this.scene, this.centerX, LANE.crowdY - 70, `${w.name}!`, '#9be8ff', 30);
-    Juice.burst(this.scene, this.centerX, LANE.crowdY - 20, w.color, 22, 260);
-    Juice.flash(this.scene, w.color, 110, 0.3);
+  /* Weapon barrel: raise arrows-per-unit (add +N or multiply ×N). */
+  applyArrow(op, x, y) {
+    this.arrowsPerUnit = op.mode === 'mul'
+      ? Math.min(BALANCE.maxArrowsPerUnit, this.arrowsPerUnit * op.v)
+      : Math.min(BALANCE.maxArrowsPerUnit, this.arrowsPerUnit + op.v);
+    this.weaponTier = Phaser.Math.Clamp(Math.round(this.arrowsPerUnit) - 1, 0, BALANCE.weaponTiers.length - 1);
+    const color = BALANCE.weaponTiers[this.weaponTier].color;
+    const label = op.mode === 'mul' ? `x${op.v} BOWS` : `+${op.v} ARROW`;
+    Juice.popText(this.scene, x, y - 30, label, '#9be8ff', 32);
+    Juice.popText(this.scene, this.centerX, LANE.crowdY - 74, `${this.arrowsPerUnit}× arrows`, '#bff4ff', 22);
+    Juice.burst(this.scene, this.centerX, LANE.crowdY - 20, color, 24, 260);
+    Juice.flash(this.scene, color, 110, 0.3);
     this.scene.sfx && this.scene.sfx('weapon');
   }
 
@@ -873,10 +886,13 @@ class Crowd {
 
 
 
+// Weapon barrels (op:'arrow') read blue/crystal with an arrow icon; crowd barrels read
+// gold/green — so the two upgrade paths are instantly distinguishable on the lane.
+const isWeapon = (r) => r.op === 'arrow';
 const rewardColor = (r) =>
-  r.op === 'weapon' ? PALETTE.crystal : r.op === 'mul' ? PALETTE.green : PALETTE.gold;
+  isWeapon(r) ? PALETTE.crystal : r.op === 'mul' ? PALETTE.green : PALETTE.gold;
 const rewardLabel = (r) =>
-  r.op === 'weapon' ? 'ARROWS+' : r.op === 'mul' ? `x${r.v}` : `+${r.v}`;
+  isWeapon(r) ? (r.mode === 'mul' ? `🏹x${r.v}` : `🏹+${r.v}`) : r.op === 'mul' ? `x${r.v}` : `+${r.v}`;
 
 class Barrel {
   constructor(scene, side, hp, reward) {
@@ -890,13 +906,15 @@ class Barrel {
     this.done = false;
     this.rewarded = false;
 
+    this.isWeapon = isWeapon(reward);
     this.sprite = scene.add.image(0, 0, 'barrel').setOrigin(0.5, 0.85).setDepth(330);
+    if (this.isWeapon) this.sprite.setTint(0x6fb6d6); // steel-blue armory keg
 
     // Reward banner on the body.
     this.rewardTxt = scene.add
       .text(0, 0, rewardLabel(reward), {
-        fontFamily: 'Georgia, serif', fontSize: '17px', fontStyle: 'bold',
-        color: '#fff', stroke: hex(PALETTE.ink), strokeThickness: 4,
+        fontFamily: 'Georgia, serif', fontSize: this.isWeapon ? '15px' : '17px', fontStyle: 'bold',
+        color: this.isWeapon ? '#dff6ff' : '#fff', stroke: hex(PALETTE.ink), strokeThickness: 4,
       })
       .setOrigin(0.5)
       .setDepth(332);
@@ -928,7 +946,10 @@ class Barrel {
     Juice.punch(this.scene, this.hpBg, 1.3, 90);
     this.scene.tweens.add({ targets: this.sprite, x: this.sprite.x + Phaser.Math.Between(-2, 2), duration: 40, yoyo: true });
     this.sprite.setTintFill(0xffffff);
-    this.scene.time.delayedCall(40, () => this.sprite && this.sprite.clearTint());
+    this.scene.time.delayedCall(40, () => {
+      if (!this.sprite) return;
+      if (this.isWeapon) this.sprite.setTint(0x6fb6d6); else this.sprite.clearTint();
+    });
     Juice.burst(this.scene, this.sprite.x, this.y - 20 * depthScale(this.y), 0xcaa15a, 4, 90);
     if (this.hp <= 0) { this.dead = true; return true; }
     return false;
@@ -1444,8 +1465,8 @@ class BattleScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(802);
     this.add.text(GAME_W / 2, 56, 'ENEMIES', { fontFamily: 'Georgia, serif', fontSize: '9px', color: '#ffd7cf' }).setOrigin(0.5).setDepth(802);
 
-    this.armyTxt = this.add.text(14, 18, '🏹 8', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: hex(PALETTE.goldLight) }).setDepth(802);
-    this.weaponTxt = this.add.text(14, 40, 'Short Bows', { fontFamily: 'Georgia, serif', fontSize: '11px', color: hex(PALETTE.crystal) }).setDepth(802);
+    this.armyTxt = this.add.text(14, 18, '🪖 8', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: hex(PALETTE.goldLight) }).setDepth(802);
+    this.weaponTxt = this.add.text(14, 40, '🏹 1× arrows', { fontFamily: 'Georgia, serif', fontSize: '11px', color: hex(PALETTE.crystal) }).setDepth(802);
 
     this.goldTxt = this.add.text(GAME_W - 14, 16, `🪙 ${this.registry.get('gold')}`, { fontFamily: 'Georgia, serif', fontSize: '14px', color: hex(PALETTE.goldLight) }).setOrigin(1, 0).setDepth(802);
     this.crysTxt = this.add.text(GAME_W - 14, 36, `💎 ${this.registry.get('crystals')}`, { fontFamily: 'Georgia, serif', fontSize: '14px', color: hex(0xbff4ff) }).setOrigin(1, 0).setDepth(802);
@@ -1503,26 +1524,32 @@ class BattleScene extends Phaser.Scene {
     return live[0];
   }
 
+  /* Volley size scales with FIREPOWER = count × arrowsPerUnit. interval scales with count.
+   * Beyond the sprite cap, each arrow carries extra hit-power so firepower stays honest. */
   _fireParams() {
-    const f = BALANCE.fire, c = this.crowd.count, t = this.crowd.weaponTier;
-    const interval = Phaser.Math.Clamp(f.baseInterval - c * f.intervalPerUnit - t * f.intervalPerTier, f.minInterval, f.baseInterval);
-    const arrows = Phaser.Math.Clamp(f.arrowsBase + Math.floor(c / f.arrowsPerUnits) + t * f.arrowsPerTier, 1, f.arrowsMax);
-    return { interval, arrows };
+    const f = BALANCE.fire, c = this.crowd.count, apu = this.crowd.arrowsPerUnit;
+    const interval = Phaser.Math.Clamp(f.baseInterval - c * f.intervalPerUnit, f.minInterval, f.baseInterval);
+    const desired = Math.max(1, Math.round((f.arrowsBase + Math.floor(c / f.arrowsPerUnits)) * apu));
+    const arrows = Math.min(desired, f.arrowsMaxVisual);
+    const hitPower = Math.max(1, Math.round(desired / arrows));
+    return { interval, arrows, hitPower };
   }
 
-  _loose(n, target) {
+  _loose(n, target, hitPower) {
     this.sfx('twang');
     const hw = 18 + Math.min(24, Math.sqrt(this.crowd.count) * 2);
+    const tint = BALANCE.weaponTiers[this.crowd.weaponTier].color;
     for (let i = 0; i < n; i++) {
-      const a = this.add.image(this.crowd.centerX + Phaser.Math.Between(-hw, hw), LANE.crowdY - 14, 'arrow').setDepth(600);
+      const a = this.add.image(this.crowd.centerX + Phaser.Math.Between(-hw, hw), LANE.crowdY - 14, 'arrow').setDepth(600).setTint(tint);
       a.target = target;
+      a.hitPower = hitPower;
       const dx = target.x - a.x, dy = target.y - a.y, d = Math.hypot(dx, dy) || 1;
       a.vx = (dx / d) * BALANCE.arrow.speed;
       a.vy = (dy / d) * BALANCE.arrow.speed;
       a.life = BALANCE.arrow.lifespanMs;
       this.arrows.push(a);
     }
-    while (this.arrows.length > 200) { const old = this.arrows.shift(); old.destroy(); }
+    while (this.arrows.length > 220) { const old = this.arrows.shift(); old.destroy(); }
   }
 
   _updateArrows(dt) {
@@ -1536,7 +1563,7 @@ class BattleScene extends Phaser.Scene {
         a.vx = (dx / d) * BALANCE.arrow.speed;
         a.vy = (dy / d) * BALANCE.arrow.speed;
         if (d < 20 * depthScale(a.y) + 8) {
-          t.hit();
+          for (let h = 0; h < (a.hitPower || 1); h++) t.hit();
           if (Math.random() < 0.3) this.sfx('thunk');
           a.destroy(); this.arrows.splice(i, 1); continue;
         }
@@ -1586,7 +1613,8 @@ class BattleScene extends Phaser.Scene {
     this.clashTimer = 0;
 
     const w = BALANCE.weaponTiers[this.crowd.weaponTier];
-    const yourDmg = Math.max(1, Math.round(this.crowd.count * w.dmg));
+    // Firepower (count × arrowsPerUnit) drives damage; only count absorbs enemy losses.
+    const yourDmg = Math.max(1, Math.round(this.crowd.count * this.crowd.arrowsPerUnit * BALANCE.clashDmgPerFirepower));
     const enemyDmg = Math.max(1, Math.round(front.count * BALANCE.enemyDmgCoeff));
 
     this._volley(front, w.color); // render the trade as an arrow volley
@@ -1630,8 +1658,9 @@ class BattleScene extends Phaser.Scene {
     } else {
       this.threatTxt.setText('—');
     }
-    this.armyTxt.setText(`🏹 ${Math.round(this.crowd.count)}`);
-    this.weaponTxt.setText(BALANCE.weaponTiers[this.crowd.weaponTier].name);
+    this.armyTxt.setText(`🪖 ${Math.round(this.crowd.count)}`);
+    const apu = this.crowd.arrowsPerUnit;
+    this.weaponTxt.setText(`🏹 ${apu % 1 ? apu.toFixed(1) : apu}× arrows`);
   }
 
   _win() {
@@ -1685,7 +1714,7 @@ class BattleScene extends Phaser.Scene {
     if (target) {
       this.fireTimer += delta;
       const fp = this._fireParams();
-      if (this.fireTimer >= fp.interval) { this.fireTimer = 0; this._loose(fp.arrows, target); }
+      if (this.fireTimer >= fp.interval) { this.fireTimer = 0; this._loose(fp.arrows, target, fp.hitPower); }
     } else {
       this.fireTimer = 9999;
     }

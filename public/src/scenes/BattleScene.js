@@ -71,8 +71,8 @@ export class BattleScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(802);
     this.add.text(GAME_W / 2, 56, 'ENEMIES', { fontFamily: 'Georgia, serif', fontSize: '9px', color: '#ffd7cf' }).setOrigin(0.5).setDepth(802);
 
-    this.armyTxt = this.add.text(14, 18, '🏹 8', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: hex(PALETTE.goldLight) }).setDepth(802);
-    this.weaponTxt = this.add.text(14, 40, 'Short Bows', { fontFamily: 'Georgia, serif', fontSize: '11px', color: hex(PALETTE.crystal) }).setDepth(802);
+    this.armyTxt = this.add.text(14, 18, '🪖 8', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: hex(PALETTE.goldLight) }).setDepth(802);
+    this.weaponTxt = this.add.text(14, 40, '🏹 1× arrows', { fontFamily: 'Georgia, serif', fontSize: '11px', color: hex(PALETTE.crystal) }).setDepth(802);
 
     this.goldTxt = this.add.text(GAME_W - 14, 16, `🪙 ${this.registry.get('gold')}`, { fontFamily: 'Georgia, serif', fontSize: '14px', color: hex(PALETTE.goldLight) }).setOrigin(1, 0).setDepth(802);
     this.crysTxt = this.add.text(GAME_W - 14, 36, `💎 ${this.registry.get('crystals')}`, { fontFamily: 'Georgia, serif', fontSize: '14px', color: hex(0xbff4ff) }).setOrigin(1, 0).setDepth(802);
@@ -130,26 +130,32 @@ export class BattleScene extends Phaser.Scene {
     return live[0];
   }
 
+  /* Volley size scales with FIREPOWER = count × arrowsPerUnit. interval scales with count.
+   * Beyond the sprite cap, each arrow carries extra hit-power so firepower stays honest. */
   _fireParams() {
-    const f = BALANCE.fire, c = this.crowd.count, t = this.crowd.weaponTier;
-    const interval = Phaser.Math.Clamp(f.baseInterval - c * f.intervalPerUnit - t * f.intervalPerTier, f.minInterval, f.baseInterval);
-    const arrows = Phaser.Math.Clamp(f.arrowsBase + Math.floor(c / f.arrowsPerUnits) + t * f.arrowsPerTier, 1, f.arrowsMax);
-    return { interval, arrows };
+    const f = BALANCE.fire, c = this.crowd.count, apu = this.crowd.arrowsPerUnit;
+    const interval = Phaser.Math.Clamp(f.baseInterval - c * f.intervalPerUnit, f.minInterval, f.baseInterval);
+    const desired = Math.max(1, Math.round((f.arrowsBase + Math.floor(c / f.arrowsPerUnits)) * apu));
+    const arrows = Math.min(desired, f.arrowsMaxVisual);
+    const hitPower = Math.max(1, Math.round(desired / arrows));
+    return { interval, arrows, hitPower };
   }
 
-  _loose(n, target) {
+  _loose(n, target, hitPower) {
     this.sfx('twang');
     const hw = 18 + Math.min(24, Math.sqrt(this.crowd.count) * 2);
+    const tint = BALANCE.weaponTiers[this.crowd.weaponTier].color;
     for (let i = 0; i < n; i++) {
-      const a = this.add.image(this.crowd.centerX + Phaser.Math.Between(-hw, hw), LANE.crowdY - 14, 'arrow').setDepth(600);
+      const a = this.add.image(this.crowd.centerX + Phaser.Math.Between(-hw, hw), LANE.crowdY - 14, 'arrow').setDepth(600).setTint(tint);
       a.target = target;
+      a.hitPower = hitPower;
       const dx = target.x - a.x, dy = target.y - a.y, d = Math.hypot(dx, dy) || 1;
       a.vx = (dx / d) * BALANCE.arrow.speed;
       a.vy = (dy / d) * BALANCE.arrow.speed;
       a.life = BALANCE.arrow.lifespanMs;
       this.arrows.push(a);
     }
-    while (this.arrows.length > 200) { const old = this.arrows.shift(); old.destroy(); }
+    while (this.arrows.length > 220) { const old = this.arrows.shift(); old.destroy(); }
   }
 
   _updateArrows(dt) {
@@ -163,7 +169,7 @@ export class BattleScene extends Phaser.Scene {
         a.vx = (dx / d) * BALANCE.arrow.speed;
         a.vy = (dy / d) * BALANCE.arrow.speed;
         if (d < 20 * depthScale(a.y) + 8) {
-          t.hit();
+          for (let h = 0; h < (a.hitPower || 1); h++) t.hit();
           if (Math.random() < 0.3) this.sfx('thunk');
           a.destroy(); this.arrows.splice(i, 1); continue;
         }
@@ -213,7 +219,8 @@ export class BattleScene extends Phaser.Scene {
     this.clashTimer = 0;
 
     const w = BALANCE.weaponTiers[this.crowd.weaponTier];
-    const yourDmg = Math.max(1, Math.round(this.crowd.count * w.dmg));
+    // Firepower (count × arrowsPerUnit) drives damage; only count absorbs enemy losses.
+    const yourDmg = Math.max(1, Math.round(this.crowd.count * this.crowd.arrowsPerUnit * BALANCE.clashDmgPerFirepower));
     const enemyDmg = Math.max(1, Math.round(front.count * BALANCE.enemyDmgCoeff));
 
     this._volley(front, w.color); // render the trade as an arrow volley
@@ -257,8 +264,9 @@ export class BattleScene extends Phaser.Scene {
     } else {
       this.threatTxt.setText('—');
     }
-    this.armyTxt.setText(`🏹 ${Math.round(this.crowd.count)}`);
-    this.weaponTxt.setText(BALANCE.weaponTiers[this.crowd.weaponTier].name);
+    this.armyTxt.setText(`🪖 ${Math.round(this.crowd.count)}`);
+    const apu = this.crowd.arrowsPerUnit;
+    this.weaponTxt.setText(`🏹 ${apu % 1 ? apu.toFixed(1) : apu}× arrows`);
   }
 
   _win() {
@@ -312,7 +320,7 @@ export class BattleScene extends Phaser.Scene {
     if (target) {
       this.fireTimer += delta;
       const fp = this._fireParams();
-      if (this.fireTimer >= fp.interval) { this.fireTimer = 0; this._loose(fp.arrows, target); }
+      if (this.fireTimer >= fp.interval) { this.fireTimer = 0; this._loose(fp.arrows, target, fp.hitPower); }
     } else {
       this.fireTimer = 9999;
     }

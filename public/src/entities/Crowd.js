@@ -15,7 +15,8 @@ export class Crowd {
     this.count = count;
     this.centerX = LANE.centerX;
     this.targetX = LANE.centerX;
-    this.weaponTier = 0;
+    this.arrowsPerUnit = 1; // every archer starts firing 1 arrow/shot; weapon barrels raise this
+    this.weaponTier = 0; // derived display tier (bow name + arrow color) from arrowsPerUnit
     this.units = []; // sprite pool
     this.t = 0; // time accumulator for bob
 
@@ -78,20 +79,21 @@ export class Crowd {
 
   get alive() { return this.count > 0; }
 
-  /* Apply a gate operation and play the juice. Returns the new count. */
+  /* Apply a barrel reward and play the juice. Returns the new count.
+   * CROWD rewards (add/sub/mul) change unit count; WEAPON rewards (op:'arrow')
+   * change arrows-per-unit. Firepower = count × arrowsPerUnit, so the two combine. */
   applyOp(op, x, y) {
+    if (op.op === 'arrow') { this.applyArrow(op, x, y); return this.count; }
+
     const before = this.count;
     if (op.op === 'add') this.count += op.v;
     else if (op.op === 'sub') this.count = Math.max(0, this.count - op.v);
     else if (op.op === 'mul') this.count = Math.round(this.count * op.v);
-    else if (op.op === 'weapon') this.upgradeWeapon();
 
     const good = this.count >= before && op.op !== 'sub';
-    if (op.op !== 'weapon') {
-      const label = op.op === 'add' ? `+${op.v}` : op.op === 'sub' ? `-${op.v}` : `x${op.v}`;
-      Juice.popText(this.scene, x, y - 30, label, good ? '#ffe9a8' : '#ff8d7a', 38);
-    }
-    if (good && op.op !== 'weapon') {
+    const label = op.op === 'add' ? `+${op.v}` : op.op === 'sub' ? `-${op.v}` : `x${op.v}`;
+    Juice.popText(this.scene, x, y - 30, label, good ? '#ffe9a8' : '#ff8d7a', 38);
+    if (good) {
       Juice.burst(this.scene, this.centerX, LANE.crowdY - 20, PALETTE.goldLight, 18, 220);
       Juice.flash(this.scene, 0xffe9a8, 80, 0.25);
       Juice.punch(this.scene, this.badge, 1.5);
@@ -104,12 +106,18 @@ export class Crowd {
     return this.count;
   }
 
-  upgradeWeapon() {
-    this.weaponTier = Math.min(BALANCE.weaponTiers.length - 1, this.weaponTier + 1);
-    const w = BALANCE.weaponTiers[this.weaponTier];
-    Juice.popText(this.scene, this.centerX, LANE.crowdY - 70, `${w.name}!`, '#9be8ff', 30);
-    Juice.burst(this.scene, this.centerX, LANE.crowdY - 20, w.color, 22, 260);
-    Juice.flash(this.scene, w.color, 110, 0.3);
+  /* Weapon barrel: raise arrows-per-unit (add +N or multiply ×N). */
+  applyArrow(op, x, y) {
+    this.arrowsPerUnit = op.mode === 'mul'
+      ? Math.min(BALANCE.maxArrowsPerUnit, this.arrowsPerUnit * op.v)
+      : Math.min(BALANCE.maxArrowsPerUnit, this.arrowsPerUnit + op.v);
+    this.weaponTier = Phaser.Math.Clamp(Math.round(this.arrowsPerUnit) - 1, 0, BALANCE.weaponTiers.length - 1);
+    const color = BALANCE.weaponTiers[this.weaponTier].color;
+    const label = op.mode === 'mul' ? `x${op.v} BOWS` : `+${op.v} ARROW`;
+    Juice.popText(this.scene, x, y - 30, label, '#9be8ff', 32);
+    Juice.popText(this.scene, this.centerX, LANE.crowdY - 74, `${this.arrowsPerUnit}× arrows`, '#bff4ff', 22);
+    Juice.burst(this.scene, this.centerX, LANE.crowdY - 20, color, 24, 260);
+    Juice.flash(this.scene, color, 110, 0.3);
     this.scene.sfx && this.scene.sfx('weapon');
   }
 
