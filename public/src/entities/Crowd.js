@@ -73,7 +73,8 @@ export class Crowd {
   }
 
   setTargetX(x) {
-    const hw = laneHalfWidth(LANE.crowdY) - 26;
+    // v3: comfortable full-lane range so you can line the crowd up under any barrel.
+    const hw = laneHalfWidth(LANE.crowdY) - 14;
     this.targetX = Phaser.Math.Clamp(x, LANE.centerX - hw, LANE.centerX + hw);
   }
 

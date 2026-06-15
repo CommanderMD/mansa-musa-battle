@@ -4,7 +4,7 @@
  * gold; locked ones show a padlock. Tapping a node selects it; the gold PLAY button
  * launches the battle. Beating a level unlocks the next (handled in ResultScene).
  */
-import { GAME_W, GAME_H, PALETTE, hex } from '../config.js';
+import { GAME_W, GAME_H, PALETTE, hex, VERSION } from '../config.js';
 import { CHAPTER1, MUSEUM_URL } from '../data/chapters.js';
 
 export class MapScene extends Phaser.Scene {
@@ -50,6 +50,12 @@ export class MapScene extends Phaser.Scene {
     this._infoPanel();
     this._playButton();
     this._museumLink();
+
+    // Build-version badge (bump to v4, v5… next time).
+    this.add.text(12, GAME_H - 16, VERSION, {
+      fontFamily: 'Georgia, serif', fontSize: '13px', fontStyle: 'bold',
+      color: hex(PALETTE.goldDeep), backgroundColor: 'rgba(42,28,12,0.35)', padding: { x: 5, y: 2 },
+    }).setOrigin(0, 1).setDepth(50);
 
     this._refresh();
   }

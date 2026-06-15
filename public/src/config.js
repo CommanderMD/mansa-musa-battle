@@ -5,6 +5,9 @@
  * only swap data/ + palette. Keep magic numbers OUT of the scenes; put them here.
  */
 
+/* Build version — bump to v4, v5… for future refinements. Shown on boot/map. */
+export const VERSION = 'v3';
+
 /* Logical design resolution (mobile portrait, ~9:16). Phaser FIT-scales this. */
 export const GAME_W = 480;
 export const GAME_H = 854;
@@ -61,8 +64,8 @@ export function laneHalfWidth(y) {
 export const BALANCE = {
   startCrowd: 8,
   renderCap: 110, // max unit sprites drawn; logical count can exceed this
-  scrollSpeed: 150, // world px/sec the lane flows toward the player
-  steerLerp: 0.18, // how snappily the crowd follows the finger
+  scrollSpeed: 100, // world px/sec the lane flows toward the player (v3: slowed for readability)
+  steerLerp: 0.4, // how snappily the crowd follows the finger (v3: tighter, near-instant w/ light smoothing)
   // Bow tiers — purely cosmetic now (name + arrow color), indexed by arrows-per-unit.
   weaponTiers: [
     { name: 'Short Bows', color: 0xf6d77a },
@@ -83,17 +86,20 @@ export const BALANCE = {
   // breaks high-HP barrels in time, which grows the army. Tuned (with barrelSpeedMul's
   // short window) so a starting crowd breaks ~hp4-5, a mid crowd ~hp10, a big crowd shreds
   // whole pairs — so greedy high-HP kegs are a real gamble early and a reward once you snowball.
-  arrow: { speed: 700, lifespanMs: 1400 },
+  // v3: arrows fly STRAIGHT UP from the units' x — no homing. A barrel is only hit if an
+  // arrow's x overlaps the barrel as it passes that row, so steering to ALIGN is the skill.
+  // Speed is fast-but-trackable by eye; a misaligned arrow sails past and off the top.
+  arrow: { speed: 440, lifespanMs: 2600 },
   fire: {
-    baseInterval: 430, // ms between volleys at crowd 0
-    intervalPerUnit: 1.5, // faster as the crowd grows
-    minInterval: 150,
+    baseInterval: 560, // ms between volleys at crowd 0 (v3: more deliberate cadence)
+    intervalPerUnit: 1.2, // faster as the crowd grows
+    minInterval: 230,
     arrowsBase: 1,
-    arrowsPerUnits: 14, // +1 base arrow per this many units (then ×arrowsPerUnit)
-    arrowsMaxVisual: 20, // sprite cap; beyond this, each arrow carries extra hit-power
+    arrowsPerUnits: 8, // +1 base arrow per this many units (then ×arrowsPerUnit) — size = more arrows
+    arrowsMaxVisual: 26, // sprite cap; beyond this, each arrow carries extra hit-power
   },
-  // Barrels roll DOWN faster than the lane flows, so you have limited time to shoot them.
-  barrelSpeedMul: 1.9,
+  // Barrels roll DOWN a touch faster than the lane flows (v3: gentler, so there's time to aim).
+  barrelSpeedMul: 1.35,
   // Damage a barrel deals to the crowd if it reaches them still alive: ceil(remHP * coeff).
   barrelReachDmg: 0.5,
 };

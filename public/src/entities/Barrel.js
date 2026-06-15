@@ -92,6 +92,10 @@ export class Barrel {
     this.hpTxt.setPosition(x, this.y - 48 * sc).setScale(Phaser.Math.Clamp(sc, 0.7, 1.2));
   }
 
+  /* v3 alignment hit-test: an arrow hits only if it crosses this row within this x half-width. */
+  get hitRowY() { return this.y - 24 * depthScale(this.y) * 1.15; }
+  get hitHalfX() { return (44 * depthScale(this.y) * 1.15) / 2 + 9; }
+
   get reachedCrowd() { return this.y >= LANE.crowdY - 8; }
 
   destroy() {

@@ -111,16 +111,23 @@ export function buildTextures(scene) {
   g.fillRect(3, 38, 38, 1.5);
   g.generateTexture('barrel', 44, 56);
 
-  // Arrow (bow shaft + head + fletching), pointing UP.
+  // Arrow (bow shaft + head + fletching), pointing UP. v3: longer + clearer so it reads in
+  // flight and a miss is obviously visible. 16x46.
   g.clear();
-  g.fillStyle(0x6b4a2a, 1); // shaft
-  g.fillRect(4, 4, 2, 16);
-  g.fillStyle(0xd9d2c4, 1); // head
-  g.fillTriangle(5, 0, 1, 7, 9, 7);
-  g.fillStyle(0xe8b43c, 1); // fletching
-  g.fillTriangle(5, 16, 1, 22, 5, 20);
-  g.fillTriangle(5, 16, 9, 22, 5, 20);
-  g.generateTexture('arrow', 10, 24);
+  g.fillStyle(0x000000, 0.22); // soft edge for contrast on the sand lane
+  g.fillRect(6, 8, 4, 34);
+  g.fillStyle(0x7a5630, 1); // shaft
+  g.fillRect(7, 8, 2, 32);
+  g.fillStyle(0xf2ead6, 1); // steel head (bright)
+  g.fillTriangle(8, 0, 1, 12, 15, 12);
+  g.fillStyle(0xb6831f, 1);
+  g.fillTriangle(8, 3, 4, 11, 12, 11);
+  g.fillStyle(0xe8462f, 1); // red fletching (reads direction)
+  g.fillTriangle(8, 34, 1, 46, 8, 41);
+  g.fillTriangle(8, 34, 15, 46, 8, 41);
+  g.fillStyle(0xffd7cf, 1);
+  g.fillRect(7, 34, 2, 8);
+  g.generateTexture('arrow', 16, 46);
 
   // Dune mound for desert flanks
   g.clear();

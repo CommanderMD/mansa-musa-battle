@@ -26,7 +26,13 @@ at runtime — zero binary assets), so it deploys cleanly on Cloudflare Workers 
 | (automatic) | The crowd auto-fires arrow volleys at the **nearest** barrel — steer to choose which one |
 | **PLAY / CONTINUE / RETRY** buttons | Navigate menus |
 
-The column auto-advances and auto-shoots; you control **which barrel your archers focus**.
+**v3 — aim by alignment:** arrows now fire **straight up** from the crowd (no auto-homing).
+A barrel is only hit if your arrows actually **overlap its x-position** as they pass — so you
+must steer the crowd to **line up under** the keg you want. Misaligned arrows visibly sail past
+and off the top. A wider/bigger army sprays more arrows (and helps), but **alignment is the skill**.
+
+The column auto-advances and auto-shoots; you control **which barrel your archers focus** (by
+lining up under it).
 Each barrel shows two numbers: a **hit-count (HP)** that ticks down as arrows bite, and a
 **reward**. There are **two barrel types**:
 

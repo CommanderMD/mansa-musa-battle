@@ -121,13 +121,9 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  /* ---- archery: pick the nearest barrel (steer to choose) and loose volleys ---- */
-  _fireTarget() {
-    const live = this.barrels.filter((b) => !b.dead && !b.done && b.y > LANE.topY - 10);
-    if (!live.length) return null;
-    live.sort((a, b) =>
-      Math.abs(a.x - this.crowd.centerX) - Math.abs(b.x - this.crowd.centerX) || b.y - a.y);
-    return live[0];
+  /* ---- archery (v3): arrows fly STRAIGHT UP from the crowd; hits are by x-overlap only ---- */
+  _anyBarrelAhead() {
+    return this.barrels.some((b) => !b.dead && !b.done && b.y > LANE.topY - 10 && b.y < LANE.crowdY - 6);
   }
 
   /* Volley size scales with FIREPOWER = count × arrowsPerUnit. interval scales with count.
@@ -141,21 +137,29 @@ export class BattleScene extends Phaser.Scene {
     return { interval, arrows, hitPower };
   }
 
-  _loose(n, target, hitPower) {
+  /* The crowd's arrow-spray half-width (absolute px at the crowd row). Kept fairly tight so an
+   * aligned volley concentrates on the barrel; it widens only modestly with size (more bodies
+   * = slightly wider forgiveness band) while the EXTRA arrows from size do the real work. */
+  _crowdBandHalf() {
+    return Phaser.Math.Clamp(15 + 1.4 * Math.sqrt(this.crowd.count), 15, 64);
+  }
+
+  _loose(n, hitPower) {
     this.sfx('twang');
-    const hw = 18 + Math.min(24, Math.sqrt(this.crowd.count) * 2);
     const tint = BALANCE.weaponTiers[this.crowd.weaponTier].color;
+    const band = this._crowdBandHalf();
     for (let i = 0; i < n; i++) {
-      const a = this.add.image(this.crowd.centerX + Phaser.Math.Between(-hw, hw), LANE.crowdY - 14, 'arrow').setDepth(600).setTint(tint);
-      a.target = target;
+      // Spray across the crowd band with a CENTER-WEIGHTED (triangular) spread — denser under
+      // the crowd's middle, thinning to the edges — then fire dead straight up.
+      const x = this.crowd.centerX + (Math.random() - Math.random()) * band;
+      const a = this.add.image(x, LANE.crowdY - 16, 'arrow').setDepth(600).setTint(tint);
+      a.vy = -BALANCE.arrow.speed;
+      a.prevY = a.y;
       a.hitPower = hitPower;
-      const dx = target.x - a.x, dy = target.y - a.y, d = Math.hypot(dx, dy) || 1;
-      a.vx = (dx / d) * BALANCE.arrow.speed;
-      a.vy = (dy / d) * BALANCE.arrow.speed;
       a.life = BALANCE.arrow.lifespanMs;
       this.arrows.push(a);
     }
-    while (this.arrows.length > 220) { const old = this.arrows.shift(); old.destroy(); }
+    while (this.arrows.length > 260) { const old = this.arrows.shift(); old.destroy(); }
   }
 
   _updateArrows(dt) {
@@ -163,22 +167,24 @@ export class BattleScene extends Phaser.Scene {
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const a = this.arrows[i];
       a.life -= dt;
-      const t = a.target;
-      if (t && !t.dead && !t.done) {
-        const dx = t.x - a.x, dy = t.y - a.y, d = Math.hypot(dx, dy) || 1;
-        a.vx = (dx / d) * BALANCE.arrow.speed;
-        a.vy = (dy / d) * BALANCE.arrow.speed;
-        if (d < 20 * depthScale(a.y) + 8) {
-          for (let h = 0; h < (a.hitPower || 1); h++) t.hit();
-          if (Math.random() < 0.3) this.sfx('thunk');
-          a.destroy(); this.arrows.splice(i, 1); continue;
+      a.prevY = a.y;
+      a.y += a.vy * step; // straight up; x never changes — alignment is everything
+      a.setScale(Phaser.Math.Clamp(depthScale(a.y) * 1.2, 0.55, 1.35));
+
+      // Overlap hit: did this arrow cross a live barrel's row within its x-width?
+      let hit = false;
+      for (const b of this.barrels) {
+        if (b.dead || b.done) continue;
+        const row = b.hitRowY;
+        if (a.prevY >= row && a.y <= row && Math.abs(a.x - b.x) <= b.hitHalfX) {
+          for (let h = 0; h < (a.hitPower || 1); h++) b.hit();
+          if (Math.random() < 0.25) this.sfx('thunk');
+          hit = true;
+          break;
         }
       }
-      a.x += a.vx * step;
-      a.y += a.vy * step;
-      a.rotation = Math.atan2(a.vy, a.vx) + Math.PI / 2;
-      a.setScale(Phaser.Math.Clamp(depthScale(a.y) * 1.1, 0.6, 1.25));
-      if (a.y < LANE.topY - 30 || a.life <= 0) { a.destroy(); this.arrows.splice(i, 1); }
+      if (hit) { a.destroy(); this.arrows.splice(i, 1); continue; }
+      if (a.y < LANE.topY - 40 || a.life <= 0) { a.destroy(); this.arrows.splice(i, 1); }
     }
   }
 
@@ -315,12 +321,12 @@ export class BattleScene extends Phaser.Scene {
     for (let i = this.pickups.length - 1; i >= 0; i--) { const p = this.pickups[i]; p.update(delta, flow, this.crowd); if (p.done) { p.destroy(); this.pickups.splice(i, 1); } }
     for (const e of this.enemies) e.update(delta, flow);
 
-    // Archery: fire at the nearest barrel; otherwise hold ready.
-    const target = this._fireTarget();
-    if (target) {
+    // Archery (v3): loose straight-up volleys whenever a barrel is on the lane ahead.
+    // Whether they connect is purely about steering the crowd under the barrel.
+    if (this._anyBarrelAhead()) {
       this.fireTimer += delta;
       const fp = this._fireParams();
-      if (this.fireTimer >= fp.interval) { this.fireTimer = 0; this._loose(fp.arrows, target, fp.hitPower); }
+      if (this.fireTimer >= fp.interval) { this.fireTimer = 0; this._loose(fp.arrows, fp.hitPower); }
     } else {
       this.fireTimer = 9999;
     }
