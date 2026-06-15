@@ -13,6 +13,13 @@
 import { LANE, PALETTE, depthScale, laneHalfWidth, hex } from '../config.js';
 import { Juice } from '../systems/juice.js';
 
+// v5 keg tuning.
+const BARREL_SCALE = 2.2; // sprite size factor (× perspective) — ~3× the old keg
+const HIT_CORE = 26; // x half-width of the hittable CORE (smaller than the big sprite) so a
+//                      centered shot can't straddle a separated pair — you must steer onto one
+const SEP_FACTOR = 0.52; // how far L/R kegs sit from lane center (× lane half-width) — well apart
+const ROLL_SPEED = 0.0019; // radians/ms — a slow, lazy roll as it trundles toward you
+
 // Weapon barrels (op:'arrow') read blue/crystal with an arrow icon; crowd barrels read
 // gold/green — so the two upgrade paths are instantly distinguishable on the lane.
 const isWeapon = (r) => r.op === 'arrow';
@@ -35,7 +42,9 @@ export class Barrel {
     this.sibling = null; // the other keg in a CHOICE pair — breaking one dismisses the other
 
     this.isWeapon = isWeapon(reward);
-    this.sprite = scene.add.image(0, 0, 'barrel').setOrigin(0.5, 0.85).setDepth(330);
+    this.roll = 0;
+    // Sideways keg, centered origin so it can spin (roll) as it travels.
+    this.sprite = scene.add.image(0, 0, 'barrel').setOrigin(0.5, 0.5).setDepth(330);
     if (this.isWeapon) this.sprite.setTint(0x6fb6d6); // steel-blue armory keg
 
     // Reward banner on the body.
@@ -58,44 +67,47 @@ export class Barrel {
       .setDepth(334);
   }
 
-  /* Current lane X for this barrel's side at its current depth. */
+  /* Current lane X for this keg's side at its current depth — L/R sit well apart. */
   get x() {
     const half = laneHalfWidth(this.y);
-    if (this.side === 'L') return LANE.centerX - half * 0.42;
-    if (this.side === 'R') return LANE.centerX + half * 0.42;
+    if (this.side === 'L') return LANE.centerX - half * SEP_FACTOR;
+    if (this.side === 'R') return LANE.centerX + half * SEP_FACTOR;
     return LANE.centerX;
   }
 
-  /* One arrow bites the barrel. Returns true if this hit destroyed it. */
-  hit() {
+  /* `power` arrow hits bite the keg (each shown arrow carries the column's punch). */
+  hit(power = 1) {
     if (this.dead) return false;
-    this.hp -= 1;
-    this.hpTxt.setText(String(Math.max(0, this.hp)));
+    this.hp = Math.max(0, this.hp - power);
+    this.hpTxt.setText(String(this.hp));
     Juice.punch(this.scene, this.hpBg, 1.3, 90);
-    this.scene.tweens.add({ targets: this.sprite, x: this.sprite.x + Phaser.Math.Between(-2, 2), duration: 40, yoyo: true });
     this.sprite.setTintFill(0xffffff);
     this.scene.time.delayedCall(40, () => {
       if (!this.sprite) return;
       if (this.isWeapon) this.sprite.setTint(0x6fb6d6); else this.sprite.clearTint();
     });
-    Juice.burst(this.scene, this.sprite.x, this.y - 20 * depthScale(this.y), 0xcaa15a, 4, 90);
+    Juice.burst(this.scene, this.x, this.y, 0xcaa15a, 5, 110);
     if (this.hp <= 0) { this.dead = true; return true; }
     return false;
   }
 
   update(dt, scrollPx) {
     this.y += scrollPx;
-    const sc = depthScale(this.y) * 1.15;
+    this.roll += dt * ROLL_SPEED; // slow rolling spin
+    const sc = depthScale(this.y) * BARREL_SCALE;
     const x = this.x;
-    this.sprite.setPosition(x, this.y).setScale(sc).setDepth(330 + this.y * 0.1);
-    this.rewardTxt.setPosition(x, this.y - 22 * sc).setScale(Phaser.Math.Clamp(sc, 0.7, 1.2));
-    this.hpBg.setPosition(x, this.y - 48 * sc).setScale(Phaser.Math.Clamp(sc, 0.7, 1.2));
-    this.hpTxt.setPosition(x, this.y - 48 * sc).setScale(Phaser.Math.Clamp(sc, 0.7, 1.2));
+    const labelSc = Phaser.Math.Clamp(depthScale(this.y) * 1.25, 0.7, 1.4);
+    const topOff = 42 * depthScale(this.y); // above the big keg
+    this.sprite.setPosition(x, this.y).setScale(sc).setRotation(this.roll).setDepth(330 + this.y * 0.1);
+    this.rewardTxt.setPosition(x, this.y).setScale(labelSc).setDepth(335 + this.y * 0.1);
+    this.hpBg.setPosition(x, this.y - topOff).setScale(labelSc);
+    this.hpTxt.setPosition(x, this.y - topOff).setScale(labelSc);
   }
 
-  /* v3 alignment hit-test: an arrow hits only if it crosses this row within this x half-width. */
-  get hitRowY() { return this.y - 24 * depthScale(this.y) * 1.15; }
-  get hitHalfX() { return (44 * depthScale(this.y) * 1.15) / 2 + 9; }
+  /* v5 hit-test: an arrow connects only if it crosses the keg's mid-row within the CORE half-
+   * width (much smaller than the big sprite) — so steering onto one keg of a pair is required. */
+  get hitRowY() { return this.y; }
+  get hitHalfX() { return HIT_CORE * depthScale(this.y) + 5; }
 
   get reachedCrowd() { return this.y >= LANE.crowdY - 8; }
 

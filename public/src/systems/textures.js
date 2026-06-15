@@ -95,21 +95,28 @@ export function buildTextures(scene) {
   g.fillEllipse(16, 14, 22, 12);
   g.generateTexture('tree', 32, 44);
 
-  // Wooden barrel (destructible reward keg). Clear staves + hoops for a readable silhouette.
+  // Wooden barrel lying SIDEWAYS (a rolling keg). Horizontal cylinder: staves run left–right
+  // along the axis; vertical hoop-bands at the ends + middle. Drawn centered (origin 0.5,0.5)
+  // so it can spin to read as rolling. 72×48.
   g.clear();
-  g.fillStyle(0x000000, 0.18);
-  g.fillEllipse(22, 50, 38, 8);
-  g.fillStyle(0x6e4326, 1); // body
-  g.fillRoundedRect(4, 6, 36, 42, 9);
-  g.fillStyle(0x7d4d2c, 1); // stave highlights
-  for (let i = 0; i < 4; i++) g.fillRect(9 + i * 8, 8, 3, 38);
-  g.fillStyle(0x3f2716, 1); // hoops
-  g.fillRect(3, 12, 38, 4);
-  g.fillRect(3, 38, 38, 4);
-  g.fillStyle(0xc9923f, 1); // brass rim glints
-  g.fillRect(3, 12, 38, 1.5);
-  g.fillRect(3, 38, 38, 1.5);
-  g.generateTexture('barrel', 44, 56);
+  const bw = 72, bh = 48;
+  // barrel body (rounded horizontal capsule)
+  g.fillStyle(0x6e4326, 1);
+  g.fillRoundedRect(2, 6, bw - 4, bh - 12, 14);
+  // curved-surface shading: lighter band through the middle (catching light)
+  g.fillStyle(0x855232, 1);
+  g.fillRoundedRect(2, 16, bw - 4, 14, 8);
+  g.fillStyle(0x9a6038, 0.7);
+  g.fillRect(4, 21, bw - 8, 5);
+  // horizontal stave lines
+  g.fillStyle(0x4f3018, 0.7);
+  for (let i = 0; i < 4; i++) g.fillRect(6, 12 + i * 7, bw - 12, 1.5);
+  // vertical hoop bands (ends + middle) — these "roll" as it spins
+  g.fillStyle(0x3a2412, 1);
+  for (const hx of [8, bw / 2 - 3, bw - 14]) g.fillRect(hx, 5, 6, bh - 10);
+  g.fillStyle(0xc9923f, 1); // brass glints on the hoops
+  for (const hx of [8, bw / 2 - 3, bw - 14]) g.fillRect(hx, 6, 1.5, bh - 12);
+  g.generateTexture('barrel', bw, bh);
 
   // Arrow (bow shaft + head + fletching), pointing UP. v3: longer + clearer so it reads in
   // flight and a miss is obviously visible. 16x46.

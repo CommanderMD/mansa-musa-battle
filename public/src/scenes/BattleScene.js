@@ -168,40 +168,39 @@ export class BattleScene extends Phaser.Scene {
       this.enemies.some((e) => !e.dead && inZone(e));
   }
 
-  /* v4 DPS = unitCount × spread × fireRate. Each unit looses `spread` arrows/volley; rapid
-   * tiers divide the interval. Beyond the sprite cap, arrows carry extra hit-power so DPS holds. */
+  /* v5: a volley shows EXACTLY `spread` arrows (HARD-CAPPED AT 3) — never more. RAPID tiers only
+   * shorten the interval. Each shown arrow carries the whole column's punch (hitPower = soldier
+   * count), so total DPS = count × (arrows that connect, ≤3) × fireRate. */
   _fireParams() {
-    const f = BALANCE.fire, c = this.crowd.count, spread = this.crowd.spread, rt = this.crowd.rateTier;
+    const f = BALANCE.fire, rt = this.crowd.rateTier;
     const interval = Phaser.Math.Clamp(f.baseInterval / (1 + f.rateStepMul * rt), f.minInterval, f.baseInterval);
-    const desired = Math.max(1, Math.round(c * spread));
-    const arrows = Math.min(desired, f.arrowsMaxVisual);
-    const hitPower = Math.max(1, Math.round(desired / arrows));
+    const arrows = Math.min(this.crowd.spread, BALANCE.maxSpread); // ≤ 3, always
+    const hitPower = Math.max(1, Math.round(this.crowd.count));
     return { interval, arrows, hitPower };
   }
 
-  /* The crowd's arrow-spray half-width (absolute px at the crowd row). Small armies fire a
-   * tight column (precise alignment matters); big armies fan out WIDE — so a large crowd can
-   * blanket a wide wall of enemies (bodies = coverage), which is the point of the wide shape. */
+  /* Half-width the `spread` arrows fan across (absolute px). Kept TIGHT so the (≤3) arrows stay
+   * a focused column — a centered shot lands on neither keg of a well-separated pair, so you must
+   * steer onto the one you want. Widens only slightly with army size. */
   _crowdBandHalf() {
-    return Phaser.Math.Clamp(14 + 1.9 * Math.sqrt(this.crowd.count), 14, 88);
+    return Phaser.Math.Clamp(8 + 0.9 * Math.sqrt(this.crowd.count), 8, 20);
   }
 
   _loose(n, hitPower) {
     this.sfx('twang');
     const tint = this.crowd.weaponColor();
     const band = this._crowdBandHalf();
-    for (let i = 0; i < n; i++) {
-      // Spray across the crowd band with a CENTER-WEIGHTED (triangular) spread — denser under
-      // the crowd's middle, thinning to the edges — then fire dead straight up.
-      const x = this.crowd.centerX + (Math.random() - Math.random()) * band;
-      const a = this.add.image(x, LANE.crowdY - 16, 'arrow').setDepth(600).setTint(tint);
+    // Fixed fan with CENTER coverage: 1→[0], 2→[-b,+b], 3→[-b,0,+b]. Each arrow = the whole column.
+    const offsets = n <= 1 ? [0] : n === 2 ? [-band, band] : [-band, 0, band];
+    for (let i = 0; i < offsets.length; i++) {
+      const a = this.add.image(this.crowd.centerX + offsets[i], LANE.crowdY - 16, 'arrow').setDepth(600).setTint(tint);
       a.vy = -BALANCE.arrow.speed;
       a.prevY = a.y;
       a.hitPower = hitPower;
       a.life = BALANCE.arrow.lifespanMs;
       this.arrows.push(a);
     }
-    while (this.arrows.length > 260) { const old = this.arrows.shift(); old.destroy(); }
+    while (this.arrows.length > 90) { const old = this.arrows.shift(); old.destroy(); }
   }
 
   _updateArrows(dt) {
@@ -219,7 +218,7 @@ export class BattleScene extends Phaser.Scene {
         if (b.dead || b.done) continue;
         const row = b.hitRowY;
         if (a.prevY >= row && a.y <= row && Math.abs(a.x - b.x) <= b.hitHalfX) {
-          for (let h = 0; h < (a.hitPower || 1); h++) b.hit();
+          b.hit(a.hitPower || 1);
           if (Math.random() < 0.25) this.sfx('thunk');
           hit = true;
           break;

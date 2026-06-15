@@ -10,6 +10,8 @@
  * inline. "Read more" deep-links to the live Black Achievement Digital Museum.
  */
 
+import { waveSize } from '../config.js';
+
 export const MUSEUM_URL =
   'https://black-achievement-museum.ericarmstrong.workers.dev';
 
@@ -22,13 +24,38 @@ export const MUSEUM_URL =
  *  - wave shape: 'wide' (a wall across the lane — needs soldiers/coverage), 'deep' (a column —
  *    needs DPS/fire-rate), 'mixed' (general).
  */
-const barrels = (dist, items) => ({ type: 'barrels', dist, items });
-const mul = (hp, v) => ({ hp, reward: { op: 'mul', v } });   // CROWD ×v soldiers
-const add = (hp, v) => ({ hp, reward: { op: 'add', v } });   // CROWD +v soldiers
-const weap = (hp, step = 1) => ({ hp, reward: { op: 'arrow', step } }); // WEAPON +step
 const enemy = (dist, count, label, shape = 'mixed', side = 'C') => ({ type: 'enemy', dist, count, label, shape, side });
-const enc = (dist, left, right, wave) => ({ type: 'encounter', dist, left, right, wave });
 const pickup = (dist, kind, side) => ({ type: 'pickup', dist, kind, side });
+// keg rewards — CROWD (xN / +N soldiers) vs WEAPON (advance spread→rate). hp = required hits.
+const mul = (v) => ({ op: 'mul', v });
+const add = (v) => ({ op: 'add', v });
+const weap = () => ({ op: 'arrow', step: 1 });
+
+/* buildLevel — generate a level's track from a compact spec. Wave SIZES are geometric
+ * (config.waveSize: ~+14%/encounter, flattening near the end); barrel HP ramps with them so
+ * breaking a keg stays real effort as your column (and its per-arrow punch) grows. */
+function buildLevel(meta, encs, boss) {
+  const total = encs.length;
+  const track = [enemy(meta.teachDist, meta.teach, 'Scouts', 'mixed', 'C')];
+  let dist = meta.firstDist;
+  encs.forEach((e, i) => {
+    // Encounter 0 is the CALIBRATION — fixed small wave every level (you always restart at 1
+    // soldier). Encounters 1.. ramp geometrically from the per-level baseline.
+    const count = i === 0 ? meta.calib : waveSize(meta.base, i - 1, total - 1);
+    // Calibration keg is low-HP every level (a lone soldier must break it fast to grow in time);
+    // later kegs ramp with the waves so breaking stays real effort as your column grows.
+    const hp = i === 0 ? 5 : Math.max(3, Math.round(meta.barrelHp * Math.pow(meta.barrelRatio, i - 1)));
+    track.push({
+      type: 'encounter', dist,
+      left: { side: 'L', hp, reward: e.l },
+      right: { side: 'R', hp, reward: e.r },
+      wave: { count, shape: e.shape, side: e.side || 'C', label: e.label },
+    });
+    if (e.pickup) track.push(pickup(dist + 520, e.pickup, e.pside || 'L'));
+    dist += meta.gap;
+  });
+  return { ...meta, length: dist - Math.round(meta.gap * 0.45), track, boss };
+}
 
 export const CHAPTER1 = {
   id: 'mali',
@@ -36,86 +63,49 @@ export const CHAPTER1 = {
   anchor: 'Mansa Musa',
   subtitle: 'Chapter 1',
   levels: [
-    {
-      id: 'm1',
-      name: 'Niani — The March Begins',
-      blurb: 'One soldier. Break the kegs, line up your arrows, and grow the column.',
-      startCrowd: 1,
-      speedMul: 1.0,
-      length: 7000,
-      track: [
-        // a) TEACH ALIGNMENT: 1 soldier lines up and shoots two scouts (no choice).
-        enemy(450, 2, 'Scouts', 'mixed', 'C'),
-        // b) THE CALIBRATION at 1 soldier: a WIDE wall of 13 is telegraphed up the lane — take
-        //    BODIES (x4 → 4 fans out and clears it). The WEAPON pick stays 1 soldier → overrun.
-        enc(1150, { side: 'L', ...mul(2, 4) }, { side: 'R', ...weap(2) },
-          { count: 13, shape: 'wide', side: 'C', label: 'Bandits' }),
-        pickup(1650, 'gold', 'L'),
-        // c) Introduce the DEEP column once you're safer: sustained DPS / fire-rate — WEAPON shines.
-        enc(2550, { side: 'L', ...weap(3) }, { side: 'R', ...add(3, 5) },
-          { count: 18, shape: 'deep', side: 'C', label: 'Column' }),
-        // d) WIDE wall: bodies fan out and blanket the lane — CROWD shines.
-        enc(3650, { side: 'L', ...mul(3, 2) }, { side: 'R', ...weap(3) },
-          { count: 28, shape: 'wide', side: 'C', label: 'Raiders' }),
-        // e) Mixed horde — waves scale with your power, so alignment still matters.
-        enc(4850, { side: 'L', ...mul(4, 2) }, { side: 'R', ...weap(3) },
-          { count: 40, shape: 'mixed', side: 'L', label: 'War Party' }),
+    // L1 — base wave 12, +14%/encounter (12,14,16,17,19 with the flat tail). Teach → calibration
+    // (wide wall: take BODIES) → deep (weapon) → wide (crowd) → mixed.
+    buildLevel(
+      { id: 'm1', name: 'Niani — The March Begins', startCrowd: 1, speedMul: 1.0,
+        blurb: 'One soldier. Read the wave, grow the column, line up every volley.',
+        teachDist: 450, teach: 2, firstDist: 1200, gap: 1250, calib: 14, base: 14, barrelHp: 6, barrelRatio: 1.5 },
+      [
+        { l: mul(4), r: weap(), shape: 'wide', label: 'Bandits', pickup: 'gold' }, // CALIBRATION
+        { l: weap(), r: add(6), shape: 'deep', label: 'Column' },
+        { l: mul(3), r: weap(), shape: 'wide', label: 'Raiders', pickup: 'crystal' },
+        { l: mul(3), r: weap(), shape: 'mixed', side: 'L', label: 'War Party' },
+        { l: mul(2), r: weap(), shape: 'wide', label: 'Marauders' },
       ],
-      boss: { count: 50, name: 'Slaver Caravan' },
-    },
-    {
-      id: 'm2',
-      name: 'Road to Walata',
-      blurb: 'Faster raids — wide walls and deep columns trade off. Read each one.',
-      startCrowd: 1,
-      speedMul: 1.12,
-      length: 7400,
-      track: [
-        enemy(450, 3, 'Scouts', 'mixed', 'C'),
-        // calibration right away (you know the lesson) — a wide wall needs bodies.
-        enc(1150, { side: 'L', ...mul(2, 4) }, { side: 'R', ...weap(2) },
-          { count: 14, shape: 'wide', side: 'C', label: 'Raiders' }),
-        pickup(1650, 'crystal', 'L'),
-        // deep → weapon
-        enc(2350, { side: 'L', ...weap(3) }, { side: 'R', ...mul(3, 2) },
-          { count: 22, shape: 'deep', side: 'C', label: 'Spear Column' }),
-        // wide → crowd
-        enc(3450, { side: 'L', ...mul(3, 2) }, { side: 'R', ...weap(3) },
-          { count: 34, shape: 'wide', side: 'C', label: 'War Band' }),
-        pickup(3950, 'gold', 'R'),
-        // deep → weapon
-        enc(4650, { side: 'L', ...weap(3) }, { side: 'R', ...mul(4, 2) },
-          { count: 46, shape: 'deep', side: 'R', label: 'Deep Column' }),
-        // big mixed
-        enc(5850, { side: 'L', ...mul(4, 2) }, { side: 'R', ...weap(3) },
-          { count: 58, shape: 'mixed', side: 'L', label: 'Marauders' }),
+      { count: 44, name: 'Slaver Caravan' }
+    ),
+    // L2 — baseline ~1.4× L1 (base 17). Faster lane. wide/deep trade off.
+    buildLevel(
+      { id: 'm2', name: 'Road to Walata', startCrowd: 1, speedMul: 1.08,
+        blurb: 'Faster raids — wide walls and deep columns trade off. Read each one.',
+        teachDist: 450, teach: 3, firstDist: 1200, gap: 1250, calib: 12, base: 19, barrelHp: 8, barrelRatio: 1.5 },
+      [
+        { l: mul(4), r: weap(), shape: 'wide', label: 'Raiders', pickup: 'crystal' }, // CALIBRATION
+        { l: weap(), r: mul(3), shape: 'deep', label: 'Spear Column' },
+        { l: mul(3), r: weap(), shape: 'wide', label: 'War Band', pickup: 'gold' },
+        { l: weap(), r: mul(3), shape: 'deep', side: 'R', label: 'Deep Column' },
+        { l: mul(2), r: weap(), shape: 'mixed', side: 'L', label: 'Marauders' },
       ],
-      boss: { count: 90, name: 'Desert Warlord' },
-    },
-    {
-      id: 'm3',
-      name: 'Timbuktu — City of Gold',
-      blurb: 'The fastest, largest hordes. Read every wave and keep both edges sharp.',
-      startCrowd: 1,
-      speedMul: 1.18,
-      length: 7800,
-      track: [
-        enemy(450, 3, 'Scouts', 'wide', 'C'),
-        enc(1150, { side: 'L', ...mul(2, 4) }, { side: 'R', ...weap(2) },
-          { count: 12, shape: 'wide', side: 'C', label: 'Raiders' }),
-        pickup(1650, 'gold', 'L'),
-        enc(2350, { side: 'L', ...weap(3) }, { side: 'R', ...mul(3, 2) },
-          { count: 22, shape: 'deep', side: 'C', label: 'Spear Column' }),
-        enc(3450, { side: 'L', ...mul(3, 2) }, { side: 'R', ...weap(3) },
-          { count: 40, shape: 'wide', side: 'C', label: 'War Band' }),
-        pickup(3950, 'crystal', 'R'),
-        enc(4650, { side: 'L', ...weap(3) }, { side: 'R', ...mul(4, 2) },
-          { count: 54, shape: 'deep', side: 'R', label: 'Deep Column' }),
-        enc(5850, { side: 'L', ...mul(4, 2) }, { side: 'R', ...weap(3) },
-          { count: 72, shape: 'wide', side: 'C', label: 'Horde' }),
+      { count: 78, name: 'Desert Warlord' }
+    ),
+    // L3 — baseline ~1.4× L2 (base 24). Fastest. Largest hordes.
+    buildLevel(
+      { id: 'm3', name: 'Timbuktu — City of Gold', startCrowd: 1, speedMul: 1.14,
+        blurb: 'The fastest, largest hordes. Read every wave and keep both edges sharp.',
+        teachDist: 450, teach: 3, firstDist: 1200, gap: 1300, calib: 11, base: 26, barrelHp: 11, barrelRatio: 1.5 },
+      [
+        { l: mul(4), r: weap(), shape: 'wide', label: 'Raiders', pickup: 'gold' }, // CALIBRATION
+        { l: weap(), r: mul(3), shape: 'deep', label: 'Spear Column' },
+        { l: mul(3), r: weap(), shape: 'wide', label: 'War Band', pickup: 'crystal' },
+        { l: weap(), r: mul(3), shape: 'deep', side: 'R', label: 'Deep Column' },
+        { l: mul(2), r: weap(), shape: 'wide', label: 'Horde' },
       ],
-      boss: { count: 140, name: 'Sahel Conqueror' },
-    },
+      { count: 130, name: 'Sahel Conqueror' }
+    ),
   ],
 };
 

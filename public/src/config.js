@@ -6,7 +6,7 @@
  */
 
 /* Build version — bump to v5, v6… for future refinements. Shown on boot/map. */
-export const VERSION = 'v4';
+export const VERSION = 'v5';
 
 /* Logical design resolution (mobile portrait, ~9:16). Phaser FIT-scales this. */
 export const GAME_W = 480;
@@ -63,41 +63,55 @@ export function laneHalfWidth(y) {
 export const BALANCE = {
   startCrowd: 8,
   renderCap: 110, // max unit sprites drawn; logical count can exceed this
-  scrollSpeed: 100, // world px/sec the lane flows toward the player (v3: slowed for readability)
-  steerLerp: 0.4, // how snappily the crowd follows the finger (v3: tighter, near-instant w/ light smoothing)
-  // v4 weapon progression: SPREAD (arrows per unit per shot) caps at 3, then weapon barrels
-  // convert to FIRE RATE (Rapid I/II/III). Arrow tint by weapon step for readability.
+
+  // ── v5 GROUNDED SPEEDS (px/s) ──  Anchored to a quick-time march (~120 steps/min ≈ 3.4 mph):
+  // a deliberate, readable pace. Enemies march at scrollSpeed; barrels roll SLOWER; arrows are
+  // fast but eye-trackable.
+  scrollSpeed: 88, // the march — enemies & lane flow toward the player (slow, steady, readable)
+  steerLerp: 0.4, // crowd follows the finger near-instantly with light smoothing
+  enemySpeedMul: 1.0, // enemies march at the base march speed (~88 px/s)
+  barrelSpeedMul: 0.62, // barrels ROLL slower than the marchers (~55 px/s)
+  arrow: { speed: 430, lifespanMs: 3200 }, // fast but trackable by eye
+
+  // v4/v5 weapon progression: SPREAD = arrows shown per volley, HARD-CAPPED AT 3. Once spread
+  // is maxed, weapon kegs raise FIRE RATE only (Rapid I/II/III) — never more arrows. Each shown
+  // arrow carries the whole column's punch (hitPower = soldier count), so DPS = count × spread × rate.
   maxSpread: 3,
   maxRateTier: 3,
   weaponColors: [0xf6d77a, 0xf3a64b, 0xe8b43c, 0x9be8ff, 0xbff4ff, 0xffffff],
-  // Enemy combat is PURE PROJECTILE-KILL (no attrition coefficients): arrows kill raiders on
-  // x-overlap, and any survivor that reaches the crowd row removes one of your units (1-for-1).
-  enemyClusterSize: 9, // a wave streams down as clusters of ~this many raiders
-  enemyHpPerUnit: 2, // arrow hits to kill one raider (boss raiders take 3) — makes DPS matter
-  enemySpeedMul: 1.12, // enemies a touch faster than barrels: telegraph gap shrinks slowly, DPS race bites
-
-  // Archery: continuous volleys fired up the lane at descending barrels. More crowd +
-  // higher bow tier = more arrows, faster. This is the reinforcing loop: a bigger army
-  // breaks high-HP barrels in time, which grows the army. Tuned (with barrelSpeedMul's
-  // short window) so a starting crowd breaks ~hp4-5, a mid crowd ~hp10, a big crowd shreds
-  // whole pairs — so greedy high-HP kegs are a real gamble early and a reward once you snowball.
-  // v3: arrows fly STRAIGHT UP from the units' x — no homing. A barrel is only hit if an
-  // arrow's x overlaps the barrel as it passes that row, so steering to ALIGN is the skill.
-  // Speed is fast-but-trackable by eye; a misaligned arrow sails past and off the top.
-  arrow: { speed: 440, lifespanMs: 2600 },
   fire: {
-    // DPS = unitCount × spread × fireRate. Each unit looses `spread` arrows/volley; rapid
-    // tiers divide the interval. (1 soldier + 1 arrow = a single arrow per volley.)
-    baseInterval: 480, // ms between volleys at rate tier 0
-    rateStepMul: 0.75, // each Rapid tier → interval / (1 + 0.75*tier)
-    minInterval: 120,
-    arrowsMaxVisual: 26, // sprite cap; beyond this, each arrow carries extra hit-power
+    baseInterval: 500, // ms between volleys at rate tier 0 (deliberate cadence)
+    rateStepMul: 0.8, // each Rapid tier → interval / (1 + 0.8*tier)
+    minInterval: 130,
   },
-  // v4: barrels descend at the SAME speed as the lane/enemies, so a telegraphed wave keeps a
-  // constant gap behind its barrel choice (readable timing).
-  barrelSpeedMul: 1.0,
+
+  // Enemy combat is PURE PROJECTILE-KILL: arrows kill raiders on x-overlap; any survivor that
+  // reaches the crowd row removes one of your units (1-for-1).
+  enemyClusterSize: 9, // a wave streams down as clusters of ~this many raiders
+  enemyHpPerUnit: 2, // arrow hits to kill one raider (boss raiders take 3)
+
+  // ── v5 ENEMY GROWTH (geometric, industry-standard) ──  Within a level each successive
+  // encounter's wave grows by `growthRatio`; the last couple flatten toward linear (piecewise)
+  // so it stays hard-but-fair. Per level, the baseline steps up by `levelStep`. The PLAYER's
+  // power (x-crowd kegs) grows faster, so smart play snowballs ahead.
+  growthRatio: 1.14, // +14% per encounter within a level
+  levelStep: 1.4, // each level's baseline ≈ 1.4× the previous
+  flattenTail: 2, // the last N encounters ramp linearly (gentler) instead of geometric
+
   // How far up-lane a telegraphed counter-wave spawns behind its barrel pair (perspective px).
-  telegraphGap: 230,
+  // Larger in v5 because barrels roll slowly — keeps the wave arriving AFTER the chosen keg.
+  telegraphGap: 360,
   // Damage a barrel deals to the crowd if it reaches them still alive: ceil(remHP * coeff).
   barrelReachDmg: 0.5,
 };
+
+/* Wave size for encounter `i` (0-based) of a level: geometric ramp from `base`, flattening over
+ * the final `flattenTail` encounters of `total` so it doesn't blow up near the boss. */
+export function waveSize(base, i, total) {
+  const { growthRatio: r, flattenTail: tail } = BALANCE;
+  const kneeIdx = Math.max(0, total - tail); // geometric up to the knee, then linear
+  if (i <= kneeIdx) return Math.round(base * Math.pow(r, i));
+  const atKnee = base * Math.pow(r, kneeIdx);
+  const linStep = atKnee * (r - 1); // continue at the knee's absolute increment (linear tail)
+  return Math.round(atKnee + linStep * (i - kneeIdx));
+}

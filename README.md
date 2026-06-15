@@ -26,6 +26,14 @@ at runtime — zero binary assets), so it deploys cleanly on Cloudflare Workers 
 | (automatic) | The crowd auto-fires arrow volleys at the **nearest** barrel — steer to choose which one |
 | **PLAY / CONTINUE / RETRY** buttons | Navigate menus |
 
+**v5 notes:** a volley shows **at most 3 arrows** (spread cap); RAPID tiers only fire faster.
+Each shown arrow carries the whole column's punch (`hitPower = soldiers`). Reward kegs are big,
+lie **sideways and slowly roll** down the lane, are **well-separated** (a centered shot hits
+neither — steer onto one), and take more hits as the level goes on. Speeds are grounded: **march
+≈ 88 px/s**, **barrel-roll ≈ 55 px/s** (slower than the marchers), **arrows ≈ 430 px/s**. Enemy
+waves scale **geometrically** (config `growthRatio ≈ 1.14`/encounter, `levelStep ≈ 1.4`× per level,
+flattening near the boss) while your power compounds faster via the kegs.
+
 **v3 — aim by alignment:** arrows now fire **straight up** from the crowd (no auto-homing).
 A barrel is only hit if your arrows actually **overlap its x-position** as they pass — so you
 must steer the crowd to **line up under** the keg you want. Misaligned arrows visibly sail past
