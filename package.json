@@ -1,0 +1,13 @@
+{
+  "name": "mansa-musa-battle",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Black Excellence: Multiplier Battle — Chapter 1: The Golden Age of Mali (anchor: Mansa Musa). A 2.5D mobile-portrait lane auto-battler built with Phaser 3.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.34.0"
+  }
+}

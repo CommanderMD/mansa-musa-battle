@@ -1,0 +1,13 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+.DS_Store
+
+# Source media originals (commit optimized copies in public/assets/ instead)
+*.mov
+*.MOV
+Screenshot*.png
+
+# local preview config
+.claude/

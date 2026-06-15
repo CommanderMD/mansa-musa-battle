@@ -1,0 +1,15 @@
+{
+  // Cloudflare Workers config — Black Excellence: Multiplier Battle (Ch.1 Mali)
+  // Dev URL: https://mansa-musa-battle.<account-subdomain>.workers.dev
+  // Worker names: lowercase + hyphens only (no underscores).
+  "name": "mansa-musa-battle",
+  "compatibility_date": "2026-06-15",
+  "assets": {
+    "directory": "./public",
+    // Serve index.html on unknown routes so it behaves like a single-page app.
+    "not_found_handling": "single-page-application"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

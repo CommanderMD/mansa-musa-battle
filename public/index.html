@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#b6831f" />
+  <title>Black Excellence: Multiplier Battle — Ch.1 The Golden Age of Mali</title>
+  <meta name="description" content="A 2.5D mobile multiplier-march lane auto-battler. Chapter 1: The Golden Age of Mali, anchored by Mansa Musa. Part of the Black Excellence series." />
+  <style>
+    :root {
+      --gold: #e8b43c;
+      --gold-light: #f6d77a;
+      --gold-deep: #b6831f;
+      --green: #3f7d4e;
+      --ink: #2a1c0c;
+      --parchment: #e9d3a3;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      background: #1a120a;
+      overflow: hidden;
+      font-family: Georgia, "Times New Roman", serif;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+      overscroll-behavior: none;
+    }
+    #game {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas { display: block; touch-action: none; }
+    #splash {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: radial-gradient(circle at 50% 35%, #3a2a12, #1a120a 70%);
+      color: var(--gold-light); text-align: center; gap: 14px; padding: 24px;
+    }
+    #splash h1 { font-size: 26px; letter-spacing: 1px; }
+    #splash .sub { font-size: 14px; color: var(--gold); }
+    #splash .crest {
+      width: 92px; height: 92px; border-radius: 50%;
+      background: radial-gradient(circle at 50% 40%, var(--gold-light), var(--gold-deep));
+      border: 4px solid var(--ink);
+      display: flex; align-items: center; justify-content: center; font-size: 44px;
+      box-shadow: 0 0 40px rgba(232,180,60,0.45);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+    #splash .loading { font-size: 12px; color: #c9a86a; }
+    #rotate {
+      position: fixed; inset: 0; z-index: 60; display: none;
+      background: #1a120a; color: var(--gold-light);
+      align-items: center; justify-content: center; text-align: center; padding: 30px; font-size: 16px;
+    }
+    /* Encourage portrait but never block landscape on desktop (FIT-scale handles it). */
+    @media (max-aspect-ratio: 13/9) { /* portrait-ish */ }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="splash">
+    <div class="crest">👑</div>
+    <h1>Black Excellence</h1>
+    <div class="sub">Multiplier Battle · Chapter 1</div>
+    <div class="sub" style="color:#fff;">The Golden Age of Mali</div>
+    <div class="loading">Loading the caravan…</div>
+  </div>
+
+  <!-- Phaser 3 from CDN (UMD global). Loaded before the ES module so window.Phaser exists. -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+  <script>
+    // Friendly fallback if the CDN is blocked.
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        if (!window.Phaser) {
+          document.getElementById('splash').innerHTML =
+            '<div class="crest">⚠️</div><h1>Could not load the game engine</h1>' +
+            '<div class="sub">Check your connection and reload.</div>';
+        }
+      }, 4000);
+    });
+  </script>
+</body>
+</html>
