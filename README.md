@@ -51,7 +51,12 @@ low-HP keg for sure, or gamble on a greedy high-HP keg — but a barrel that rea
 2. **Battle** — shoot down reward barrels — gold **crowd kegs** (`x3 +25` units) and blue
    **weapon kegs** (`🏹x2` arrows/unit) — grab gold chests + crystals, and clash with enemy
    waves (top-center counter = enemy strength).
-3. **Boss** — a large formation at the end needs a threshold-size crowd.
+3. **Enemies are killed by your arrows** (v3) — waves advance down the lane as targets;
+   line up under them and your volleys delete them (each raider takes 1–2 hits). Any survivors
+   that reach your column collide and remove an **equal number of your units (1-for-1)**. So
+   out-DPS the wave before contact, or get gutted. Effective DPS = units × arrows-per-unit ×
+   fire-rate, and it only lands where you're aligned.
+4. **Boss** — just a very large enemy block: out-DPS it before contact, or get crushed.
 4. **Victory** — winged banner, reward tiles, and a Mansa Musa dossier card. The next level
    unlocks. **Defeat** — retry.
 

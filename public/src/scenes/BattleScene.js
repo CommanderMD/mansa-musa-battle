@@ -106,7 +106,7 @@ export class BattleScene extends Phaser.Scene {
       if (e.type === 'barrels') {
         for (const it of e.items) this.barrels.push(new Barrel(this, it.side, it.hp, it.reward));
       } else if (e.type === 'enemy') {
-        this.enemies.push(new EnemyFormation(this, e.count, e.label, !!e.boss));
+        this.enemies.push(new EnemyFormation(this, e.count, e.label, !!e.boss, e.side || 'C'));
         this.sfx('clash');
       } else if (e.type === 'pickup') {
         this.pickups.push(new Pickup(this, e.kind, e.side));
@@ -115,15 +115,17 @@ export class BattleScene extends Phaser.Scene {
     if (!this.bossSpawned && dist >= this.level.length) {
       this.bossSpawned = true;
       const b = this.level.boss;
-      this.enemies.push(new EnemyFormation(this, b.count, b.name, true));
+      this.enemies.push(new EnemyFormation(this, b.count, b.name, true, 'C'));
       this._banner('FINAL STAND', PALETTE.enemy, b.name);
       this.sfx('clash');
     }
   }
 
   /* ---- archery (v3): arrows fly STRAIGHT UP from the crowd; hits are by x-overlap only ---- */
-  _anyBarrelAhead() {
-    return this.barrels.some((b) => !b.dead && !b.done && b.y > LANE.topY - 10 && b.y < LANE.crowdY - 6);
+  _anyTargetAhead() {
+    const inZone = (o) => o.y > LANE.topY - 10 && o.y < LANE.crowdY - 6;
+    return this.barrels.some((b) => !b.dead && !b.done && inZone(b)) ||
+      this.enemies.some((e) => !e.dead && inZone(e));
   }
 
   /* Volley size scales with FIREPOWER = count × arrowsPerUnit. interval scales with count.
@@ -171,7 +173,7 @@ export class BattleScene extends Phaser.Scene {
       a.y += a.vy * step; // straight up; x never changes — alignment is everything
       a.setScale(Phaser.Math.Clamp(depthScale(a.y) * 1.2, 0.55, 1.35));
 
-      // Overlap hit: did this arrow cross a live barrel's row within its x-width?
+      // Overlap hit: did this arrow cross a live target's row within its x-width?
       let hit = false;
       for (const b of this.barrels) {
         if (b.dead || b.done) continue;
@@ -181,6 +183,19 @@ export class BattleScene extends Phaser.Scene {
           if (Math.random() < 0.25) this.sfx('thunk');
           hit = true;
           break;
+        }
+      }
+      if (!hit) {
+        for (const e of this.enemies) {
+          if (e.dead) continue;
+          const row = e.hitRowY;
+          if (a.prevY >= row && a.y <= row && Math.abs(a.x - e.centerX) <= e.hitHalfX) {
+            e.takeHit(a.hitPower || 1);
+            Juice.burst(this, a.x, row, PALETTE.enemy, 3, 90);
+            if (Math.random() < 0.18) this.sfx('hit');
+            hit = true;
+            break;
+          }
         }
       }
       if (hit) { a.destroy(); this.arrows.splice(i, 1); continue; }
@@ -215,50 +230,38 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  /* ---- the attrition clash against the front-most enemy at the line ---- */
-  _resolveClash(dt) {
-    const front = this.enemies.find((e) => !e.dead && e.reachedClash);
-    if (!front) return;
-    front.clashing = true;
-    this.clashTimer += dt;
-    if (this.clashTimer < BALANCE.clashTickMs) return;
-    this.clashTimer = 0;
+  /* ---- enemies: advance, get shot down by arrows; survivors collide 1-for-1 ---- */
+  _updateEnemies(dt, flow) {
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      e.update(dt, flow);
 
-    const w = BALANCE.weaponTiers[this.crowd.weaponTier];
-    // Firepower (count × arrowsPerUnit) drives damage; only count absorbs enemy losses.
-    const yourDmg = Math.max(1, Math.round(this.crowd.count * this.crowd.arrowsPerUnit * BALANCE.clashDmgPerFirepower));
-    const enemyDmg = Math.max(1, Math.round(front.count * BALANCE.enemyDmgCoeff));
-
-    this._volley(front, w.color); // render the trade as an arrow volley
-    Juice.burst(this, front.centerX, front.y, PALETTE.enemy, 8, 150);
-    this.sfx('hit');
-
-    front.takeDamage(yourDmg);
-    this.crowd.takeLosses(enemyDmg);
-
-    if (front.dead) {
-      Juice.burst(this, front.centerX, front.y, PALETTE.goldLight, 26, 260);
-      Juice.flash(this, 0xffe9a8, 90, 0.25);
-      Juice.shake(this, 0.006, 160);
-      this.sfx('pop');
-      this.addGold(front.isBoss ? 60 : 15);
-      if (front.isBoss) this._win();
-      front.destroy();
-      this.enemies = this.enemies.filter((e) => e !== front);
-    }
-    if (this.crowd.count <= 0 && !this.over) this._lose();
-  }
-
-  /* A burst of arrows from the crowd into an enemy formation (visual). */
-  _volley(enemy, color) {
-    const n = Phaser.Math.Clamp(2 + Math.floor(this.crowd.count / 12), 2, 8);
-    this.sfx('twang');
-    for (let i = 0; i < n; i++) {
-      const a = this.add.image(this.crowd.centerX + Phaser.Math.Between(-16, 16), LANE.crowdY - 14, 'arrow').setTint(color).setDepth(600);
-      this.tweens.add({
-        targets: a, x: enemy.centerX + Phaser.Math.Between(-18, 18), y: enemy.y,
-        rotation: 0, duration: 120, ease: 'Quad.in', onComplete: () => a.destroy(),
-      });
+      if (e.dead) {
+        // Whole wave shot down before reaching the column.
+        Juice.burst(this, e.centerX, e.y, PALETTE.goldLight, e.isBoss ? 30 : 18, 260);
+        Juice.flash(this, 0xffe9a8, 80, 0.22);
+        Juice.shake(this, e.isBoss ? 0.008 : 0.004, 150);
+        this.sfx('pop');
+        this.addGold(e.isBoss ? 60 : 12);
+        const wasBoss = e.isBoss;
+        e.destroy(); this.enemies.splice(i, 1);
+        if (wasBoss) this._win();
+        continue;
+      }
+      if (e.reachedCrowd) {
+        // Survivors crash in and remove an EQUAL number of your units (1-for-1).
+        const survivors = Math.round(e.count);
+        this.crowd.takeLosses(survivors);
+        Juice.popText(this, e.centerX, LANE.crowdY - 34, `-${survivors}`, '#ff8d7a', 30);
+        Juice.burst(this, e.centerX, LANE.crowdY - 16, PALETTE.enemy, 22, 240);
+        Juice.flash(this, 0x9a3326, 110, 0.3);
+        Juice.shake(this, 0.01, 220);
+        this.sfx('smash');
+        const wasBoss = e.isBoss;
+        e.destroy(); this.enemies.splice(i, 1);
+        if (this.crowd.count <= 0) { this._lose(); return; }
+        if (wasBoss) this._win(); // withstood the boss → victory
+      }
     }
   }
 
@@ -307,9 +310,8 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    const scrollPx = BALANCE.scrollSpeed * (delta / 1000);
-    const clashing = this.enemies.some((e) => e.reachedClash && !e.dead);
-    const flow = clashing ? 0 : scrollPx;
+    // v3: the lane flows steadily — enemies and barrels both keep advancing (no melee stop).
+    const flow = BALANCE.scrollSpeed * (delta / 1000);
 
     this.dist += flow;
     this._spawnUpTo(this.dist);
@@ -319,11 +321,10 @@ export class BattleScene extends Phaser.Scene {
 
     this._updateBarrels(delta, flow);
     for (let i = this.pickups.length - 1; i >= 0; i--) { const p = this.pickups[i]; p.update(delta, flow, this.crowd); if (p.done) { p.destroy(); this.pickups.splice(i, 1); } }
-    for (const e of this.enemies) e.update(delta, flow);
 
-    // Archery (v3): loose straight-up volleys whenever a barrel is on the lane ahead.
-    // Whether they connect is purely about steering the crowd under the barrel.
-    if (this._anyBarrelAhead()) {
+    // Archery (v3): loose straight-up volleys whenever a barrel OR enemy is on the lane ahead.
+    // Whether they connect is purely about steering the crowd under the target.
+    if (this._anyTargetAhead()) {
       this.fireTimer += delta;
       const fp = this._fireParams();
       if (this.fireTimer >= fp.interval) { this.fireTimer = 0; this._loose(fp.arrows, fp.hitPower); }
@@ -332,7 +333,7 @@ export class BattleScene extends Phaser.Scene {
     }
     this._updateArrows(delta);
 
-    this._resolveClash(delta);
+    this._updateEnemies(delta, flow); // shoot them down; survivors collide 1-for-1
     this._updateThreat();
 
     const prog = Phaser.Math.Clamp(this.dist / (this.level.length + 400), 0, 1);

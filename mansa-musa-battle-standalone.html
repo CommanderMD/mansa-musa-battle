@@ -173,15 +173,15 @@ const BALANCE = {
   // Speed is fast-but-trackable by eye; a misaligned arrow sails past and off the top.
   arrow: { speed: 440, lifespanMs: 2600 },
   fire: {
-    baseInterval: 560, // ms between volleys at crowd 0 (v3: more deliberate cadence)
+    baseInterval: 500, // ms between volleys at crowd 0 (v3: deliberate but enough to break kegs)
     intervalPerUnit: 1.2, // faster as the crowd grows
-    minInterval: 230,
-    arrowsBase: 1,
+    minInterval: 220,
+    arrowsBase: 2, // even a small column looses a couple of arrows per volley
     arrowsPerUnits: 8, // +1 base arrow per this many units (then ×arrowsPerUnit) — size = more arrows
     arrowsMaxVisual: 26, // sprite cap; beyond this, each arrow carries extra hit-power
   },
-  // Barrels roll DOWN a touch faster than the lane flows (v3: gentler, so there's time to aim).
-  barrelSpeedMul: 1.35,
+  // Barrels/enemies roll DOWN a touch faster than the lane flows (v3: gentle, so there's time to aim).
+  barrelSpeedMul: 1.25,
   // Damage a barrel deals to the crowd if it reaches them still alive: ceil(remHP * coeff).
   barrelReachDmg: 0.5,
 };
@@ -215,7 +215,7 @@ const add = (hp, v) => ({ hp, reward: { op: 'add', v } });
 // WEAPON barrels — multiply arrows-per-unit (firepower). bowMul ×N, arrowAdd +N.
 const bowMul = (hp, v = 2) => ({ hp, reward: { op: 'arrow', mode: 'mul', v } });
 const arrowAdd = (hp, v = 1) => ({ hp, reward: { op: 'arrow', mode: 'add', v } });
-const enemy = (dist, count, label) => ({ type: 'enemy', dist, count, label });
+const enemy = (dist, count, label, side = 'C') => ({ type: 'enemy', dist, count, label, side });
 const pickup = (dist, kind, side) => ({ type: 'pickup', dist, kind, side });
 
 const CHAPTER1 = {
@@ -238,12 +238,12 @@ const CHAPTER1 = {
         pickup(1550, 'crystal', 'R'),
         // safe weapon (+1 arrow) vs greedy crowd (x3 units)
         barrels(1900, [{ side: 'L', ...arrowAdd(4, 1) }, { side: 'R', ...mul(9, 3) }]),
-        enemy(2450, 16, 'Raiders'),
+        enemy(2450, 16, 'Raiders', 'R'),
         pickup(2750, 'gold', 'R'),
         barrels(3050, [{ side: 'C', ...add(4, 18) }]), // guaranteed reinforcements
         // x2 units vs x2 bows — the pure crowd-vs-weapon fork
         barrels(3450, [{ side: 'L', ...mul(10, 2) }, { side: 'R', ...bowMul(9, 2) }]),
-        enemy(3950, 26, 'War Party'),
+        enemy(3950, 26, 'War Party', 'L'),
       ],
       boss: { count: 55, name: 'Slaver Caravan', threshold: 45 },
     },
@@ -259,10 +259,10 @@ const CHAPTER1 = {
         pickup(1450, 'crystal', 'L'),
         barrels(1750, [{ side: 'L', ...mul(10, 3) }, { side: 'R', ...arrowAdd(5, 1) }]),
         pickup(2050, 'gold', 'R'),
-        enemy(2400, 22, 'Desert Wolves'),
+        enemy(2400, 22, 'Desert Wolves', 'L'),
         barrels(2750, [{ side: 'L', ...add(4, 18) }, { side: 'R', ...bowMul(10, 2) }]),
         barrels(3150, [{ side: 'L', ...mul(12, 3) }, { side: 'R', ...mul(7, 2) }]),
-        enemy(3650, 38, 'War Party'),
+        enemy(3650, 38, 'War Party', 'R'),
         pickup(3950, 'crystal', 'R'),
         barrels(4250, [{ side: 'L', ...arrowAdd(6, 2) }, { side: 'R', ...mul(13, 3) }]),
         enemy(4750, 52, 'Marauders'),
@@ -277,15 +277,15 @@ const CHAPTER1 = {
       length: 5700,
       track: [
         barrels(650, [{ side: 'L', ...add(4, 16) }, { side: 'R', ...bowMul(4, 2) }]),
-        enemy(1150, 16, 'Raiders'),
+        enemy(1150, 16, 'Raiders', 'R'),
         pickup(1450, 'gold', 'L'),
         barrels(1750, [{ side: 'L', ...arrowAdd(5, 1) }, { side: 'R', ...add(5, 22) }]),
         barrels(2150, [{ side: 'L', ...mul(11, 3) }, { side: 'R', ...bowMul(10, 2) }]),
-        enemy(2600, 30, 'War Party'),
+        enemy(2600, 30, 'War Party', 'L'),
         pickup(2900, 'crystal', 'R'),
         // the brief's greedy keg: x10 units (hp14) vs safe x2 bows (hp6)
         barrels(3250, [{ side: 'L', ...mul(14, 10) }, { side: 'R', ...bowMul(6, 2) }]),
-        enemy(3750, 55, 'Marauders'),
+        enemy(3750, 55, 'Marauders', 'R'),
         barrels(4050, [{ side: 'L', ...arrowAdd(6, 2) }, { side: 'R', ...mul(12, 3) }]),
         barrels(4450, [{ side: 'L', ...add(6, 30) }, { side: 'R', ...mul(16, 3) }]),
         enemy(4950, 80, 'Horde'),
@@ -997,50 +997,53 @@ class Barrel {
 
 /* ===== entities/EnemyFormation.js ===== */
 /*
- * EnemyFormation.js — A streaming-down enemy block (a wave, or the end boss). Owns a
- * logical `count` rendered as packed raider sprites + a floating health bar and a count
- * label. It marches down until it reaches the clash line, then the BattleScene resolves
- * attrition against the crowd. Boss formations are larger and visually flagged.
+ * EnemyFormation.js — A wave (or the boss) of raiders advancing DOWN the lane as TARGETS.
+ *
+ * v3 combat: your straight-up arrows kill them on x-overlap (each enemy = `hpPerEnemy` hits,
+ * 1–3). The block keeps advancing; whatever survives to your column collides and removes an
+ * EQUAL number of your units (1-for-1). So: out-DPS the wave before contact, or get gutted.
+ * The boss is just a very large block. Spawns at a lane side so you must steer to mow it.
  */
 
 
 class EnemyFormation {
-  constructor(scene, count, label, isBoss = false) {
+  constructor(scene, count, label, isBoss = false, side = 'C') {
     this.scene = scene;
     this.count = count;
     this.maxCount = count;
+    this.hpPerEnemy = isBoss ? 2 : 1; // arrow hits to kill one raider
+    this.hp = count * this.hpPerEnemy;
     this.label = label || 'Raiders';
     this.isBoss = isBoss;
+    this.side = side;
     this.y = -60;
-    this.centerX = LANE.centerX + Phaser.Math.Between(-30, 30);
     this.units = [];
-    this.clashing = false;
     this.dead = false;
     this.t = 0;
 
     this.layer = scene.add.container(0, 0).setDepth(450);
 
-    // Health bar + count badge
     this.barBg = scene.add.rectangle(0, 0, 120, 12, 0x2a1c0c, 0.85).setOrigin(0.5).setDepth(640);
     this.bar = scene.add.rectangle(0, 0, 116, 8, PALETTE.enemy).setOrigin(0, 0.5).setDepth(641);
     this.badge = scene.add
       .text(0, 0, String(count), {
-        fontFamily: 'Georgia, serif',
-        fontSize: isBoss ? '40px' : '30px',
-        fontStyle: 'bold',
-        color: '#ffd7cf',
-        stroke: '#3a120b',
-        strokeThickness: 6,
+        fontFamily: 'Georgia, serif', fontSize: isBoss ? '40px' : '30px', fontStyle: 'bold',
+        color: '#ffd7cf', stroke: '#3a120b', strokeThickness: 6,
       })
       .setOrigin(0.5)
       .setDepth(642);
     if (isBoss) {
-      this.crown = scene.add
-        .text(0, 0, '☠', { fontSize: '26px', color: '#ffd7cf' })
-        .setOrigin(0.5)
-        .setDepth(642);
+      this.crown = scene.add.text(0, 0, '☠', { fontSize: '26px', color: '#ffd7cf' }).setOrigin(0.5).setDepth(642);
     }
     this.sync(true);
+  }
+
+  /* Lane x for this block's side at its current depth (so you steer to align under it). */
+  get centerX() {
+    const half = laneHalfWidth(this.y);
+    if (this.side === 'L') return LANE.centerX - half * 0.40;
+    if (this.side === 'R') return LANE.centerX + half * 0.40;
+    return LANE.centerX;
   }
 
   slot(i) {
@@ -1065,42 +1068,52 @@ class EnemyFormation {
     while (this.units.length > target) {
       const s = this.units.pop();
       if (instant) { s.destroy(); continue; }
-      this.scene.tweens.add({
-        targets: s, scale: 0, alpha: 0, duration: 160, ease: 'Quad.in',
-        onComplete: () => s.destroy(),
-      });
+      this.scene.tweens.add({ targets: s, scale: 0, alpha: 0, duration: 140, ease: 'Quad.in', onComplete: () => s.destroy() });
     }
     this.badge.setText(String(Math.max(0, Math.round(this.count))));
-    const pct = Phaser.Math.Clamp(this.count / this.maxCount, 0, 1);
-    this.bar.width = 116 * pct;
+    this.bar.width = 116 * Phaser.Math.Clamp(this.count / this.maxCount, 0, 1);
   }
 
-  takeDamage(n) {
-    this.count = Math.max(0, this.count - n);
+  /* Arrow hit-zone — wider for bigger blocks, so a huge wave outspans your spray and some
+   * flank raiders always survive to contact (the boss can't be perfectly cleared). */
+  get hitRowY() { return this.y - 30 * depthScale(this.y); }
+  get hitHalfX() {
+    const cnt = Math.min(this.count, this.isBoss ? 90 : 70);
+    return (10 + 6.5 * Math.sqrt(cnt)) * depthScale(this.y) + 6;
+  }
+
+  /* An arrow kills `power` raiders (each costs hpPerEnemy hits). */
+  takeHit(power) {
+    if (this.dead) return;
+    this.hp -= power;
+    const newCount = Math.max(0, Math.ceil(this.hp / this.hpPerEnemy));
+    if (newCount < this.count) this.count = newCount;
     this.sync();
-    if (this.count <= 0) this.dead = true;
+    if (this.hp <= 0) { this.count = 0; this.dead = true; }
   }
 
   update(dt, scrollPx) {
     this.t += dt;
-    if (!this.clashing) this.y += scrollPx;
-    const sc = depthScale(this.y) * (this.isBoss ? 1.25 : 1);
+    this.y += scrollPx; // always advancing — no melee stop
+    const cx = this.centerX;
     const baseSc = depthScale(this.y);
     for (const s of this.units) {
       s.bob += dt * 0.01;
-      s.x = this.centerX + s.slot.ox * baseSc;
+      s.x = cx + s.slot.ox * baseSc;
       s.y = this.y + s.slot.oy * baseSc + Math.sin(s.bob) * 1.8;
       s.setScale(baseSc * (this.isBoss ? 1.18 : 1));
       s.setDepth(450 + s.y * 0.1);
     }
+    const sc = baseSc * (this.isBoss ? 1.25 : 1);
     const topY = this.y - 60 * sc;
-    this.barBg.setPosition(this.centerX, topY).setScale(Phaser.Math.Clamp(sc, 0.7, 1.3));
-    this.bar.setPosition(this.centerX - 58 * Phaser.Math.Clamp(sc, 0.7, 1.3), topY).setScale(Phaser.Math.Clamp(sc, 0.7, 1.3), 1);
-    this.badge.setPosition(this.centerX, topY - 24).setScale(Phaser.Math.Clamp(sc, 0.7, 1.2));
-    if (this.crown) this.crown.setPosition(this.centerX, topY - 50);
+    const bsc = Phaser.Math.Clamp(sc, 0.7, 1.3);
+    this.barBg.setPosition(cx, topY).setScale(bsc);
+    this.bar.setPosition(cx - 58 * bsc, topY).setScale(bsc, 1);
+    this.badge.setPosition(cx, topY - 24).setScale(Phaser.Math.Clamp(sc, 0.7, 1.2));
+    if (this.crown) this.crown.setPosition(cx, topY - 50);
   }
 
-  get reachedClash() { return this.y >= LANE.clashLineY; }
+  get reachedCrowd() { return this.y >= LANE.crowdY - 6; }
 
   destroy() {
     this.layer.destroy();
@@ -1525,7 +1538,7 @@ class BattleScene extends Phaser.Scene {
       if (e.type === 'barrels') {
         for (const it of e.items) this.barrels.push(new Barrel(this, it.side, it.hp, it.reward));
       } else if (e.type === 'enemy') {
-        this.enemies.push(new EnemyFormation(this, e.count, e.label, !!e.boss));
+        this.enemies.push(new EnemyFormation(this, e.count, e.label, !!e.boss, e.side || 'C'));
         this.sfx('clash');
       } else if (e.type === 'pickup') {
         this.pickups.push(new Pickup(this, e.kind, e.side));
@@ -1534,15 +1547,17 @@ class BattleScene extends Phaser.Scene {
     if (!this.bossSpawned && dist >= this.level.length) {
       this.bossSpawned = true;
       const b = this.level.boss;
-      this.enemies.push(new EnemyFormation(this, b.count, b.name, true));
+      this.enemies.push(new EnemyFormation(this, b.count, b.name, true, 'C'));
       this._banner('FINAL STAND', PALETTE.enemy, b.name);
       this.sfx('clash');
     }
   }
 
   /* ---- archery (v3): arrows fly STRAIGHT UP from the crowd; hits are by x-overlap only ---- */
-  _anyBarrelAhead() {
-    return this.barrels.some((b) => !b.dead && !b.done && b.y > LANE.topY - 10 && b.y < LANE.crowdY - 6);
+  _anyTargetAhead() {
+    const inZone = (o) => o.y > LANE.topY - 10 && o.y < LANE.crowdY - 6;
+    return this.barrels.some((b) => !b.dead && !b.done && inZone(b)) ||
+      this.enemies.some((e) => !e.dead && inZone(e));
   }
 
   /* Volley size scales with FIREPOWER = count × arrowsPerUnit. interval scales with count.
@@ -1590,7 +1605,7 @@ class BattleScene extends Phaser.Scene {
       a.y += a.vy * step; // straight up; x never changes — alignment is everything
       a.setScale(Phaser.Math.Clamp(depthScale(a.y) * 1.2, 0.55, 1.35));
 
-      // Overlap hit: did this arrow cross a live barrel's row within its x-width?
+      // Overlap hit: did this arrow cross a live target's row within its x-width?
       let hit = false;
       for (const b of this.barrels) {
         if (b.dead || b.done) continue;
@@ -1600,6 +1615,19 @@ class BattleScene extends Phaser.Scene {
           if (Math.random() < 0.25) this.sfx('thunk');
           hit = true;
           break;
+        }
+      }
+      if (!hit) {
+        for (const e of this.enemies) {
+          if (e.dead) continue;
+          const row = e.hitRowY;
+          if (a.prevY >= row && a.y <= row && Math.abs(a.x - e.centerX) <= e.hitHalfX) {
+            e.takeHit(a.hitPower || 1);
+            Juice.burst(this, a.x, row, PALETTE.enemy, 3, 90);
+            if (Math.random() < 0.18) this.sfx('hit');
+            hit = true;
+            break;
+          }
         }
       }
       if (hit) { a.destroy(); this.arrows.splice(i, 1); continue; }
@@ -1634,50 +1662,38 @@ class BattleScene extends Phaser.Scene {
     }
   }
 
-  /* ---- the attrition clash against the front-most enemy at the line ---- */
-  _resolveClash(dt) {
-    const front = this.enemies.find((e) => !e.dead && e.reachedClash);
-    if (!front) return;
-    front.clashing = true;
-    this.clashTimer += dt;
-    if (this.clashTimer < BALANCE.clashTickMs) return;
-    this.clashTimer = 0;
+  /* ---- enemies: advance, get shot down by arrows; survivors collide 1-for-1 ---- */
+  _updateEnemies(dt, flow) {
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      e.update(dt, flow);
 
-    const w = BALANCE.weaponTiers[this.crowd.weaponTier];
-    // Firepower (count × arrowsPerUnit) drives damage; only count absorbs enemy losses.
-    const yourDmg = Math.max(1, Math.round(this.crowd.count * this.crowd.arrowsPerUnit * BALANCE.clashDmgPerFirepower));
-    const enemyDmg = Math.max(1, Math.round(front.count * BALANCE.enemyDmgCoeff));
-
-    this._volley(front, w.color); // render the trade as an arrow volley
-    Juice.burst(this, front.centerX, front.y, PALETTE.enemy, 8, 150);
-    this.sfx('hit');
-
-    front.takeDamage(yourDmg);
-    this.crowd.takeLosses(enemyDmg);
-
-    if (front.dead) {
-      Juice.burst(this, front.centerX, front.y, PALETTE.goldLight, 26, 260);
-      Juice.flash(this, 0xffe9a8, 90, 0.25);
-      Juice.shake(this, 0.006, 160);
-      this.sfx('pop');
-      this.addGold(front.isBoss ? 60 : 15);
-      if (front.isBoss) this._win();
-      front.destroy();
-      this.enemies = this.enemies.filter((e) => e !== front);
-    }
-    if (this.crowd.count <= 0 && !this.over) this._lose();
-  }
-
-  /* A burst of arrows from the crowd into an enemy formation (visual). */
-  _volley(enemy, color) {
-    const n = Phaser.Math.Clamp(2 + Math.floor(this.crowd.count / 12), 2, 8);
-    this.sfx('twang');
-    for (let i = 0; i < n; i++) {
-      const a = this.add.image(this.crowd.centerX + Phaser.Math.Between(-16, 16), LANE.crowdY - 14, 'arrow').setTint(color).setDepth(600);
-      this.tweens.add({
-        targets: a, x: enemy.centerX + Phaser.Math.Between(-18, 18), y: enemy.y,
-        rotation: 0, duration: 120, ease: 'Quad.in', onComplete: () => a.destroy(),
-      });
+      if (e.dead) {
+        // Whole wave shot down before reaching the column.
+        Juice.burst(this, e.centerX, e.y, PALETTE.goldLight, e.isBoss ? 30 : 18, 260);
+        Juice.flash(this, 0xffe9a8, 80, 0.22);
+        Juice.shake(this, e.isBoss ? 0.008 : 0.004, 150);
+        this.sfx('pop');
+        this.addGold(e.isBoss ? 60 : 12);
+        const wasBoss = e.isBoss;
+        e.destroy(); this.enemies.splice(i, 1);
+        if (wasBoss) this._win();
+        continue;
+      }
+      if (e.reachedCrowd) {
+        // Survivors crash in and remove an EQUAL number of your units (1-for-1).
+        const survivors = Math.round(e.count);
+        this.crowd.takeLosses(survivors);
+        Juice.popText(this, e.centerX, LANE.crowdY - 34, `-${survivors}`, '#ff8d7a', 30);
+        Juice.burst(this, e.centerX, LANE.crowdY - 16, PALETTE.enemy, 22, 240);
+        Juice.flash(this, 0x9a3326, 110, 0.3);
+        Juice.shake(this, 0.01, 220);
+        this.sfx('smash');
+        const wasBoss = e.isBoss;
+        e.destroy(); this.enemies.splice(i, 1);
+        if (this.crowd.count <= 0) { this._lose(); return; }
+        if (wasBoss) this._win(); // withstood the boss → victory
+      }
     }
   }
 
@@ -1726,9 +1742,8 @@ class BattleScene extends Phaser.Scene {
       return;
     }
 
-    const scrollPx = BALANCE.scrollSpeed * (delta / 1000);
-    const clashing = this.enemies.some((e) => e.reachedClash && !e.dead);
-    const flow = clashing ? 0 : scrollPx;
+    // v3: the lane flows steadily — enemies and barrels both keep advancing (no melee stop).
+    const flow = BALANCE.scrollSpeed * (delta / 1000);
 
     this.dist += flow;
     this._spawnUpTo(this.dist);
@@ -1738,11 +1753,10 @@ class BattleScene extends Phaser.Scene {
 
     this._updateBarrels(delta, flow);
     for (let i = this.pickups.length - 1; i >= 0; i--) { const p = this.pickups[i]; p.update(delta, flow, this.crowd); if (p.done) { p.destroy(); this.pickups.splice(i, 1); } }
-    for (const e of this.enemies) e.update(delta, flow);
 
-    // Archery (v3): loose straight-up volleys whenever a barrel is on the lane ahead.
-    // Whether they connect is purely about steering the crowd under the barrel.
-    if (this._anyBarrelAhead()) {
+    // Archery (v3): loose straight-up volleys whenever a barrel OR enemy is on the lane ahead.
+    // Whether they connect is purely about steering the crowd under the target.
+    if (this._anyTargetAhead()) {
       this.fireTimer += delta;
       const fp = this._fireParams();
       if (this.fireTimer >= fp.interval) { this.fireTimer = 0; this._loose(fp.arrows, fp.hitPower); }
@@ -1751,7 +1765,7 @@ class BattleScene extends Phaser.Scene {
     }
     this._updateArrows(delta);
 
-    this._resolveClash(delta);
+    this._updateEnemies(delta, flow); // shoot them down; survivors collide 1-for-1
     this._updateThreat();
 
     const prog = Phaser.Math.Clamp(this.dist / (this.level.length + 400), 0, 1);

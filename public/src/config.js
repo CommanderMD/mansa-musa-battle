@@ -91,15 +91,15 @@ export const BALANCE = {
   // Speed is fast-but-trackable by eye; a misaligned arrow sails past and off the top.
   arrow: { speed: 440, lifespanMs: 2600 },
   fire: {
-    baseInterval: 560, // ms between volleys at crowd 0 (v3: more deliberate cadence)
+    baseInterval: 500, // ms between volleys at crowd 0 (v3: deliberate but enough to break kegs)
     intervalPerUnit: 1.2, // faster as the crowd grows
-    minInterval: 230,
-    arrowsBase: 1,
+    minInterval: 220,
+    arrowsBase: 2, // even a small column looses a couple of arrows per volley
     arrowsPerUnits: 8, // +1 base arrow per this many units (then ×arrowsPerUnit) — size = more arrows
     arrowsMaxVisual: 26, // sprite cap; beyond this, each arrow carries extra hit-power
   },
-  // Barrels roll DOWN a touch faster than the lane flows (v3: gentler, so there's time to aim).
-  barrelSpeedMul: 1.35,
+  // Barrels/enemies roll DOWN a touch faster than the lane flows (v3: gentle, so there's time to aim).
+  barrelSpeedMul: 1.25,
   // Damage a barrel deals to the crowd if it reaches them still alive: ceil(remHP * coeff).
   barrelReachDmg: 0.5,
 };
