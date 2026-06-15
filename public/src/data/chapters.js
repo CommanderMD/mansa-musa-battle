@@ -41,78 +41,80 @@ export const CHAPTER1 = {
       name: 'Niani — The March Begins',
       blurb: 'One soldier. Break the kegs, line up your arrows, and grow the column.',
       startCrowd: 1,
-      length: 6600,
+      speedMul: 1.0,
+      length: 7000,
       track: [
-        // 0) TEACH ALIGNMENT (1 soldier, no choice): line up and shoot a tiny scout group.
+        // a) TEACH ALIGNMENT: 1 soldier lines up and shoots two scouts (no choice).
         enemy(450, 2, 'Scouts', 'mixed', 'C'),
-        // 1) THE CALIBRATION at 1 soldier: read the incoming 10 — take BODIES (x4 → 4 clears
-        //    them), NOT weapon (1 soldier even at 2 arrows is overrun).
+        // b) THE CALIBRATION at 1 soldier: a WIDE wall of 13 is telegraphed up the lane — take
+        //    BODIES (x4 → 4 fans out and clears it). The WEAPON pick stays 1 soldier → overrun.
         enc(1150, { side: 'L', ...mul(2, 4) }, { side: 'R', ...weap(2) },
-          { count: 12, shape: 'mixed', side: 'C', label: 'Bandits' }),
+          { count: 13, shape: 'wide', side: 'C', label: 'Bandits' }),
         pickup(1650, 'gold', 'L'),
-        // 2) A bigger WIDE wall vs ~4 soldiers — still need bodies (x4 → 16). Weapon = overrun.
-        enc(2350, { side: 'L', ...mul(3, 4) }, { side: 'R', ...weap(3) },
-          { count: 26, shape: 'wide', side: 'C', label: 'Raiders' }),
-        pickup(2850, 'crystal', 'R'),
-        // 3) Now safe at ~16 — a DEEP column: take WEAPON to build DPS / fire-rate (deep's answer).
-        enc(3550, { side: 'L', ...weap(3) }, { side: 'R', ...add(3, 8) },
-          { count: 30, shape: 'deep', side: 'C', label: 'Column' }),
-        // 4) Snowball — mixed and wide hordes (power now outpaces the threat).
-        enc(4650, { side: 'L', ...mul(4, 3) }, { side: 'R', ...weap(3) },
-          { count: 42, shape: 'mixed', side: 'L', label: 'War Party' }),
-        enc(5750, { side: 'L', ...mul(4, 2) }, { side: 'R', ...weap(3) },
-          { count: 52, shape: 'wide', side: 'C', label: 'Marauders' }),
+        // c) Introduce the DEEP column once you're safer: sustained DPS / fire-rate — WEAPON shines.
+        enc(2550, { side: 'L', ...weap(3) }, { side: 'R', ...add(3, 5) },
+          { count: 18, shape: 'deep', side: 'C', label: 'Column' }),
+        // d) WIDE wall: bodies fan out and blanket the lane — CROWD shines.
+        enc(3650, { side: 'L', ...mul(3, 2) }, { side: 'R', ...weap(3) },
+          { count: 28, shape: 'wide', side: 'C', label: 'Raiders' }),
+        // e) Mixed horde — waves scale with your power, so alignment still matters.
+        enc(4850, { side: 'L', ...mul(4, 2) }, { side: 'R', ...weap(3) },
+          { count: 40, shape: 'mixed', side: 'L', label: 'War Party' }),
       ],
-      boss: { count: 64, name: 'Slaver Caravan' },
+      boss: { count: 50, name: 'Slaver Caravan' },
     },
     {
       id: 'm2',
       name: 'Road to Walata',
-      blurb: 'The raids come thicker — wide walls and deep columns. Pick the right upgrade.',
+      blurb: 'Faster raids — wide walls and deep columns trade off. Read each one.',
       startCrowd: 1,
-      length: 7200,
+      speedMul: 1.12,
+      length: 7400,
       track: [
-        enemy(450, 2, 'Scouts', 'mixed', 'C'),
-        // calibration — a touch harder than L1 (12, wide): bodies first.
+        enemy(450, 3, 'Scouts', 'mixed', 'C'),
+        // calibration right away (you know the lesson) — a wide wall needs bodies.
         enc(1150, { side: 'L', ...mul(2, 4) }, { side: 'R', ...weap(2) },
-          { count: 12, shape: 'wide', side: 'C', label: 'Raiders' }),
+          { count: 14, shape: 'wide', side: 'C', label: 'Raiders' }),
         pickup(1650, 'crystal', 'L'),
-        enc(2350, { side: 'L', ...mul(3, 4) }, { side: 'R', ...weap(3) },
-          { count: 30, shape: 'wide', side: 'C', label: 'War Band' }),
-        // deep columns → weapon's turn
-        enc(3550, { side: 'L', ...weap(3) }, { side: 'R', ...mul(4, 3) },
-          { count: 36, shape: 'deep', side: 'L', label: 'Spear Column' }),
-        pickup(4050, 'gold', 'R'),
-        enc(4750, { side: 'L', ...mul(4, 3) }, { side: 'R', ...weap(3) },
-          { count: 48, shape: 'wide', side: 'C', label: 'Marauders' }),
-        enc(5950, { side: 'L', ...weap(3) }, { side: 'R', ...mul(5, 3) },
-          { count: 60, shape: 'deep', side: 'R', label: 'Deep Column' }),
+        // deep → weapon
+        enc(2350, { side: 'L', ...weap(3) }, { side: 'R', ...mul(3, 2) },
+          { count: 22, shape: 'deep', side: 'C', label: 'Spear Column' }),
+        // wide → crowd
+        enc(3450, { side: 'L', ...mul(3, 2) }, { side: 'R', ...weap(3) },
+          { count: 34, shape: 'wide', side: 'C', label: 'War Band' }),
+        pickup(3950, 'gold', 'R'),
+        // deep → weapon
+        enc(4650, { side: 'L', ...weap(3) }, { side: 'R', ...mul(4, 2) },
+          { count: 46, shape: 'deep', side: 'R', label: 'Deep Column' }),
+        // big mixed
+        enc(5850, { side: 'L', ...mul(4, 2) }, { side: 'R', ...weap(3) },
+          { count: 58, shape: 'mixed', side: 'L', label: 'Marauders' }),
       ],
-      boss: { count: 110, name: 'Desert Warlord' },
+      boss: { count: 90, name: 'Desert Warlord' },
     },
     {
       id: 'm3',
       name: 'Timbuktu — City of Gold',
-      blurb: 'Defend the jewel of the empire — the largest hordes yet. Read each wave.',
+      blurb: 'The fastest, largest hordes. Read every wave and keep both edges sharp.',
       startCrowd: 1,
+      speedMul: 1.18,
       length: 7800,
       track: [
-        enemy(450, 2, 'Scouts', 'wide', 'C'),
-        // calibration — hardest opener (14, wide): you MUST take bodies.
+        enemy(450, 3, 'Scouts', 'wide', 'C'),
         enc(1150, { side: 'L', ...mul(2, 4) }, { side: 'R', ...weap(2) },
           { count: 12, shape: 'wide', side: 'C', label: 'Raiders' }),
         pickup(1650, 'gold', 'L'),
-        enc(2350, { side: 'L', ...mul(3, 4) }, { side: 'R', ...weap(3) },
-          { count: 34, shape: 'wide', side: 'C', label: 'War Band' }),
-        enc(3550, { side: 'L', ...weap(3) }, { side: 'R', ...mul(4, 4) },
-          { count: 44, shape: 'deep', side: 'L', label: 'Deep Column' }),
-        pickup(4050, 'crystal', 'R'),
-        enc(4750, { side: 'L', ...mul(5, 3) }, { side: 'R', ...weap(3) },
-          { count: 58, shape: 'wide', side: 'C', label: 'Horde' }),
-        enc(5950, { side: 'L', ...weap(3) }, { side: 'R', ...mul(5, 3) },
-          { count: 74, shape: 'deep', side: 'R', label: 'Spear Wall' }),
+        enc(2350, { side: 'L', ...weap(3) }, { side: 'R', ...mul(3, 2) },
+          { count: 22, shape: 'deep', side: 'C', label: 'Spear Column' }),
+        enc(3450, { side: 'L', ...mul(3, 2) }, { side: 'R', ...weap(3) },
+          { count: 40, shape: 'wide', side: 'C', label: 'War Band' }),
+        pickup(3950, 'crystal', 'R'),
+        enc(4650, { side: 'L', ...weap(3) }, { side: 'R', ...mul(4, 2) },
+          { count: 54, shape: 'deep', side: 'R', label: 'Deep Column' }),
+        enc(5850, { side: 'L', ...mul(4, 2) }, { side: 'R', ...weap(3) },
+          { count: 72, shape: 'wide', side: 'C', label: 'Horde' }),
       ],
-      boss: { count: 165, name: 'Sahel Conqueror' },
+      boss: { count: 140, name: 'Sahel Conqueror' },
     },
   ],
 };

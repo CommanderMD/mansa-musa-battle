@@ -44,9 +44,11 @@ Each barrel shows two numbers: a **hit-count (HP)** that ticks down as arrows bi
 the other is dismissed. Each choice is **telegraphed**: its counter-wave is visible up the lane in
 the distance, so read the incoming count/shape before committing. Waves come in shapes:
 **wide walls** (need soldiers/coverage) and **deep columns** (need DPS/fire-rate). Early on, bodies
-matter most (1 soldier can't out-shoot 12 — take the x4); pick wrong for the incoming wave and the
-survivors crash in and **overrun you 1-for-1**. Power grows exponentially, so once you snowball you
-steamroll — the hard reads are early.
+matter most (1 soldier can't out-shoot a wall of 13 — take the x4); pick wrong for the incoming
+wave and the survivors crash in and **overrun you 1-for-1**. Power grows exponentially, so once you
+snowball you steamroll — the hard reads are early. Each level also flows **faster** than the last
+(L1 → L2 → L3), so later chapters give less time to read and align (the barrels and enemies speed up
+together, keeping the telegraph readable).
 
 ### The loop
 1. **World map** — pick an unlocked node, press the gold **PLAY** button.

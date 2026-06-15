@@ -179,11 +179,11 @@ export class BattleScene extends Phaser.Scene {
     return { interval, arrows, hitPower };
   }
 
-  /* The crowd's arrow-spray half-width (absolute px at the crowd row). Kept fairly tight so an
-   * aligned volley concentrates on the barrel; it widens only modestly with size (more bodies
-   * = slightly wider forgiveness band) while the EXTRA arrows from size do the real work. */
+  /* The crowd's arrow-spray half-width (absolute px at the crowd row). Small armies fire a
+   * tight column (precise alignment matters); big armies fan out WIDE — so a large crowd can
+   * blanket a wide wall of enemies (bodies = coverage), which is the point of the wide shape. */
   _crowdBandHalf() {
-    return Phaser.Math.Clamp(15 + 1.4 * Math.sqrt(this.crowd.count), 15, 64);
+    return Phaser.Math.Clamp(14 + 1.9 * Math.sqrt(this.crowd.count), 14, 88);
   }
 
   _loose(n, hitPower) {
@@ -353,7 +353,9 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // v3: the lane flows steadily — enemies and barrels both keep advancing (no melee stop).
-    const flow = BALANCE.scrollSpeed * (delta / 1000);
+    // Per-level pace ramp: later levels flow faster (less reaction/aim time). Barrels AND
+    // enemies scale together, so the telegraph keeps a constant gap.
+    const flow = BALANCE.scrollSpeed * (this.level.speedMul || 1) * (delta / 1000);
 
     this.dist += flow;
     this._spawnUpTo(this.dist);
