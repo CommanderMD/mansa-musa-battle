@@ -13,19 +13,21 @@
 export const MUSEUM_URL =
   'https://black-achievement-museum.ericarmstrong.workers.dev';
 
-/* Event factories keep the track readable. Distances are in world px from start.
- * Barrels are the multiplier source now: shoot them down with arrows before they reach
- * the crowd. `items` is 1 or 2 barrels ({ side, hp, reward }); pairs force a greedy-vs-safe
- * choice (you can only focus one — the other chips you). reward = { op:'mul'|'add'|'weapon', v }.
+/* Event factories. Distances are world px from start.
+ *  - barrels: shoot kegs down (aligned arrows) before they reach you to claim the reward.
+ *  - CROWD kegs (mul/add) grow soldiers; WEAPON kegs (weap) advance the weapon: SPREAD 1→2→3,
+ *    then FIRE RATE (Rapid I/II/III). DPS = soldiers × spread × fireRate.
+ *  - encounter (enc): a barrel PAIR + its counter-wave TELEGRAPHED far up the lane, so you read
+ *    the incoming count/shape before committing crowd-vs-weapon.
+ *  - wave shape: 'wide' (a wall across the lane — needs soldiers/coverage), 'deep' (a column —
+ *    needs DPS/fire-rate), 'mixed' (general).
  */
 const barrels = (dist, items) => ({ type: 'barrels', dist, items });
-// CROWD barrels — grow the unit count.
-const mul = (hp, v) => ({ hp, reward: { op: 'mul', v } });
-const add = (hp, v) => ({ hp, reward: { op: 'add', v } });
-// WEAPON barrels — multiply arrows-per-unit (firepower). bowMul ×N, arrowAdd +N.
-const bowMul = (hp, v = 2) => ({ hp, reward: { op: 'arrow', mode: 'mul', v } });
-const arrowAdd = (hp, v = 1) => ({ hp, reward: { op: 'arrow', mode: 'add', v } });
-const enemy = (dist, count, label, side = 'C') => ({ type: 'enemy', dist, count, label, side });
+const mul = (hp, v) => ({ hp, reward: { op: 'mul', v } });   // CROWD ×v soldiers
+const add = (hp, v) => ({ hp, reward: { op: 'add', v } });   // CROWD +v soldiers
+const weap = (hp, step = 1) => ({ hp, reward: { op: 'arrow', step } }); // WEAPON +step
+const enemy = (dist, count, label, shape = 'mixed', side = 'C') => ({ type: 'enemy', dist, count, label, shape, side });
+const enc = (dist, left, right, wave) => ({ type: 'encounter', dist, left, right, wave });
 const pickup = (dist, kind, side) => ({ type: 'pickup', dist, kind, side });
 
 export const CHAPTER1 = {
@@ -37,70 +39,80 @@ export const CHAPTER1 = {
     {
       id: 'm1',
       name: 'Niani — The March Begins',
-      blurb: 'Rally the archers and shoot down the reward kegs before they reach the column.',
-      startCrowd: 8,
-      length: 4300,
+      blurb: 'One soldier. Break the kegs, line up your arrows, and grow the column.',
+      startCrowd: 1,
+      length: 6600,
       track: [
-        pickup(420, 'gold', 'L'),
-        // first choice: MORE UNITS (+12) vs MORE ARROWS/unit (x2 bows)
-        barrels(750, [{ side: 'L', ...add(4, 12) }, { side: 'R', ...bowMul(5, 2) }]),
-        enemy(1250, 8, 'Bandits'),
-        pickup(1550, 'crystal', 'R'),
-        // safe weapon (+1 arrow) vs greedy crowd (x3 units)
-        barrels(1900, [{ side: 'L', ...arrowAdd(4, 1) }, { side: 'R', ...mul(9, 3) }]),
-        enemy(2450, 16, 'Raiders', 'R'),
-        pickup(2750, 'gold', 'R'),
-        barrels(3050, [{ side: 'C', ...add(4, 18) }]), // guaranteed reinforcements
-        // x2 units vs x2 bows — the pure crowd-vs-weapon fork
-        barrels(3450, [{ side: 'L', ...mul(10, 2) }, { side: 'R', ...bowMul(9, 2) }]),
-        enemy(3950, 26, 'War Party', 'L'),
+        // 0) TEACH ALIGNMENT (1 soldier, no choice): line up and shoot a tiny scout group.
+        enemy(450, 2, 'Scouts', 'mixed', 'C'),
+        // 1) THE CALIBRATION at 1 soldier: read the incoming 10 — take BODIES (x4 → 4 clears
+        //    them), NOT weapon (1 soldier even at 2 arrows is overrun).
+        enc(1150, { side: 'L', ...mul(2, 4) }, { side: 'R', ...weap(2) },
+          { count: 12, shape: 'mixed', side: 'C', label: 'Bandits' }),
+        pickup(1650, 'gold', 'L'),
+        // 2) A bigger WIDE wall vs ~4 soldiers — still need bodies (x4 → 16). Weapon = overrun.
+        enc(2350, { side: 'L', ...mul(3, 4) }, { side: 'R', ...weap(3) },
+          { count: 26, shape: 'wide', side: 'C', label: 'Raiders' }),
+        pickup(2850, 'crystal', 'R'),
+        // 3) Now safe at ~16 — a DEEP column: take WEAPON to build DPS / fire-rate (deep's answer).
+        enc(3550, { side: 'L', ...weap(3) }, { side: 'R', ...add(3, 8) },
+          { count: 30, shape: 'deep', side: 'C', label: 'Column' }),
+        // 4) Snowball — mixed and wide hordes (power now outpaces the threat).
+        enc(4650, { side: 'L', ...mul(4, 3) }, { side: 'R', ...weap(3) },
+          { count: 42, shape: 'mixed', side: 'L', label: 'War Party' }),
+        enc(5750, { side: 'L', ...mul(4, 2) }, { side: 'R', ...weap(3) },
+          { count: 52, shape: 'wide', side: 'C', label: 'Marauders' }),
       ],
-      boss: { count: 55, name: 'Slaver Caravan', threshold: 45 },
+      boss: { count: 64, name: 'Slaver Caravan' },
     },
     {
       id: 'm2',
       name: 'Road to Walata',
-      blurb: 'Cross the savanna toward the trade roads. Tougher kegs, richer rewards.',
-      startCrowd: 10,
-      length: 5100,
+      blurb: 'The raids come thicker — wide walls and deep columns. Pick the right upgrade.',
+      startCrowd: 1,
+      length: 7200,
       track: [
-        barrels(650, [{ side: 'L', ...mul(4, 2) }, { side: 'R', ...bowMul(4, 2) }]),
-        enemy(1150, 12, 'Raiders'),
-        pickup(1450, 'crystal', 'L'),
-        barrels(1750, [{ side: 'L', ...mul(10, 3) }, { side: 'R', ...arrowAdd(5, 1) }]),
-        pickup(2050, 'gold', 'R'),
-        enemy(2400, 22, 'Desert Wolves', 'L'),
-        barrels(2750, [{ side: 'L', ...add(4, 18) }, { side: 'R', ...bowMul(10, 2) }]),
-        barrels(3150, [{ side: 'L', ...mul(12, 3) }, { side: 'R', ...mul(7, 2) }]),
-        enemy(3650, 38, 'War Party', 'R'),
-        pickup(3950, 'crystal', 'R'),
-        barrels(4250, [{ side: 'L', ...arrowAdd(6, 2) }, { side: 'R', ...mul(13, 3) }]),
-        enemy(4750, 52, 'Marauders'),
+        enemy(450, 2, 'Scouts', 'mixed', 'C'),
+        // calibration — a touch harder than L1 (12, wide): bodies first.
+        enc(1150, { side: 'L', ...mul(2, 4) }, { side: 'R', ...weap(2) },
+          { count: 12, shape: 'wide', side: 'C', label: 'Raiders' }),
+        pickup(1650, 'crystal', 'L'),
+        enc(2350, { side: 'L', ...mul(3, 4) }, { side: 'R', ...weap(3) },
+          { count: 30, shape: 'wide', side: 'C', label: 'War Band' }),
+        // deep columns → weapon's turn
+        enc(3550, { side: 'L', ...weap(3) }, { side: 'R', ...mul(4, 3) },
+          { count: 36, shape: 'deep', side: 'L', label: 'Spear Column' }),
+        pickup(4050, 'gold', 'R'),
+        enc(4750, { side: 'L', ...mul(4, 3) }, { side: 'R', ...weap(3) },
+          { count: 48, shape: 'wide', side: 'C', label: 'Marauders' }),
+        enc(5950, { side: 'L', ...weap(3) }, { side: 'R', ...mul(5, 3) },
+          { count: 60, shape: 'deep', side: 'R', label: 'Deep Column' }),
       ],
-      boss: { count: 95, name: 'Desert Warlord', threshold: 75 },
+      boss: { count: 110, name: 'Desert Warlord' },
     },
     {
       id: 'm3',
       name: 'Timbuktu — City of Gold',
-      blurb: 'Defend the jewel of the empire and its great library at Sankore.',
-      startCrowd: 12,
-      length: 5700,
+      blurb: 'Defend the jewel of the empire — the largest hordes yet. Read each wave.',
+      startCrowd: 1,
+      length: 7800,
       track: [
-        barrels(650, [{ side: 'L', ...add(4, 16) }, { side: 'R', ...bowMul(4, 2) }]),
-        enemy(1150, 16, 'Raiders', 'R'),
-        pickup(1450, 'gold', 'L'),
-        barrels(1750, [{ side: 'L', ...arrowAdd(5, 1) }, { side: 'R', ...add(5, 22) }]),
-        barrels(2150, [{ side: 'L', ...mul(11, 3) }, { side: 'R', ...bowMul(10, 2) }]),
-        enemy(2600, 30, 'War Party', 'L'),
-        pickup(2900, 'crystal', 'R'),
-        // the brief's greedy keg: x10 units (hp14) vs safe x2 bows (hp6)
-        barrels(3250, [{ side: 'L', ...mul(14, 10) }, { side: 'R', ...bowMul(6, 2) }]),
-        enemy(3750, 55, 'Marauders', 'R'),
-        barrels(4050, [{ side: 'L', ...arrowAdd(6, 2) }, { side: 'R', ...mul(12, 3) }]),
-        barrels(4450, [{ side: 'L', ...add(6, 30) }, { side: 'R', ...mul(16, 3) }]),
-        enemy(4950, 80, 'Horde'),
+        enemy(450, 2, 'Scouts', 'wide', 'C'),
+        // calibration — hardest opener (14, wide): you MUST take bodies.
+        enc(1150, { side: 'L', ...mul(2, 4) }, { side: 'R', ...weap(2) },
+          { count: 12, shape: 'wide', side: 'C', label: 'Raiders' }),
+        pickup(1650, 'gold', 'L'),
+        enc(2350, { side: 'L', ...mul(3, 4) }, { side: 'R', ...weap(3) },
+          { count: 34, shape: 'wide', side: 'C', label: 'War Band' }),
+        enc(3550, { side: 'L', ...weap(3) }, { side: 'R', ...mul(4, 4) },
+          { count: 44, shape: 'deep', side: 'L', label: 'Deep Column' }),
+        pickup(4050, 'crystal', 'R'),
+        enc(4750, { side: 'L', ...mul(5, 3) }, { side: 'R', ...weap(3) },
+          { count: 58, shape: 'wide', side: 'C', label: 'Horde' }),
+        enc(5950, { side: 'L', ...weap(3) }, { side: 'R', ...mul(5, 3) },
+          { count: 74, shape: 'deep', side: 'R', label: 'Spear Wall' }),
       ],
-      boss: { count: 150, name: 'Sahel Conqueror', threshold: 110 },
+      boss: { count: 165, name: 'Sahel Conqueror' },
     },
   ],
 };

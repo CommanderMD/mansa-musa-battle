@@ -127,7 +127,7 @@ export class MapScene extends Phaser.Scene {
     const lvl = CHAPTER1.levels[this.selected];
     this.infoName.setText(lvl.name);
     this.infoBlurb.setText(lvl.blurb);
-    this.infoStats.setText(`Start: ${lvl.startCrowd}   ·   Boss needs ≈ ${lvl.boss.threshold}`);
+    this.infoStats.setText(`Start: ${lvl.startCrowd} soldier${lvl.startCrowd === 1 ? '' : 's'}   ·   Boss: ${lvl.boss.count}`);
   }
 
   _infoPanel() {

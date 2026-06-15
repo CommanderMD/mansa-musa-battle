@@ -19,7 +19,7 @@ const isWeapon = (r) => r.op === 'arrow';
 const rewardColor = (r) =>
   isWeapon(r) ? PALETTE.crystal : r.op === 'mul' ? PALETTE.green : PALETTE.gold;
 const rewardLabel = (r) =>
-  isWeapon(r) ? (r.mode === 'mul' ? `🏹x${r.v}` : `🏹+${r.v}`) : r.op === 'mul' ? `x${r.v}` : `+${r.v}`;
+  isWeapon(r) ? 'WEAPON+' : r.op === 'mul' ? `x${r.v}` : `+${r.v}`;
 
 export class Barrel {
   constructor(scene, side, hp, reward) {
@@ -32,6 +32,7 @@ export class Barrel {
     this.dead = false;
     this.done = false;
     this.rewarded = false;
+    this.sibling = null; // the other keg in a CHOICE pair — breaking one dismisses the other
 
     this.isWeapon = isWeapon(reward);
     this.sprite = scene.add.image(0, 0, 'barrel').setOrigin(0.5, 0.85).setDepth(330);
@@ -97,6 +98,17 @@ export class Barrel {
   get hitHalfX() { return (44 * depthScale(this.y) * 1.15) / 2 + 9; }
 
   get reachedCrowd() { return this.y >= LANE.crowdY - 8; }
+
+  /* The unchosen keg of a pair: fade away with no effect (the choice is exclusive). */
+  dismiss() {
+    if (this.done) return;
+    this.done = true;
+    const objs = [this.sprite, this.rewardTxt, this.hpBg, this.hpTxt];
+    this.scene.tweens.add({
+      targets: objs, alpha: 0, duration: 220, ease: 'Quad.out',
+      onComplete: () => objs.forEach((o) => o && o.destroy()),
+    });
+  }
 
   destroy() {
     this.sprite.destroy();

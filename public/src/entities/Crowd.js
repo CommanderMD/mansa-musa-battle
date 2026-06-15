@@ -15,8 +15,9 @@ export class Crowd {
     this.count = count;
     this.centerX = LANE.centerX;
     this.targetX = LANE.centerX;
-    this.arrowsPerUnit = 1; // every archer starts firing 1 arrow/shot; weapon barrels raise this
-    this.weaponTier = 0; // derived display tier (bow name + arrow color) from arrowsPerUnit
+    // v4 weapon progression: spread (arrows/unit, 1→3) then rate tier (Rapid I/II/III).
+    this.spread = 1;
+    this.rateTier = 0;
     this.units = []; // sprite pool
     this.t = 0; // time accumulator for bob
 
@@ -82,7 +83,7 @@ export class Crowd {
 
   /* Apply a barrel reward and play the juice. Returns the new count.
    * CROWD rewards (add/sub/mul) change unit count; WEAPON rewards (op:'arrow')
-   * change arrows-per-unit. Firepower = count × arrowsPerUnit, so the two combine. */
+   * change the weapon (spread→rate). DPS = count × spread × fireRate, so the two combine. */
   applyOp(op, x, y) {
     if (op.op === 'arrow') { this.applyArrow(op, x, y); return this.count; }
 
@@ -107,20 +108,28 @@ export class Crowd {
     return this.count;
   }
 
-  /* Weapon barrel: raise arrows-per-unit (add +N or multiply ×N). */
+  /* Weapon barrel: advance one (or `step`) weapon step — fill SPREAD up to 3, then RATE. */
   applyArrow(op, x, y) {
-    this.arrowsPerUnit = op.mode === 'mul'
-      ? Math.min(BALANCE.maxArrowsPerUnit, this.arrowsPerUnit * op.v)
-      : Math.min(BALANCE.maxArrowsPerUnit, this.arrowsPerUnit + op.v);
-    this.weaponTier = Phaser.Math.Clamp(Math.round(this.arrowsPerUnit) - 1, 0, BALANCE.weaponTiers.length - 1);
-    const color = BALANCE.weaponTiers[this.weaponTier].color;
-    const label = op.mode === 'mul' ? `x${op.v} BOWS` : `+${op.v} ARROW`;
-    Juice.popText(this.scene, x, y - 30, label, '#9be8ff', 32);
-    Juice.popText(this.scene, this.centerX, LANE.crowdY - 74, `${this.arrowsPerUnit}× arrows`, '#bff4ff', 22);
+    const steps = op.step || 1;
+    for (let i = 0; i < steps; i++) {
+      if (this.spread < BALANCE.maxSpread) this.spread++;
+      else this.rateTier = Math.min(BALANCE.maxRateTier, this.rateTier + 1);
+    }
+    const color = this.weaponColor();
+    Juice.popText(this.scene, x, y - 30, 'WEAPON+', '#9be8ff', 32);
+    Juice.popText(this.scene, this.centerX, LANE.crowdY - 74, this.weaponLabel(), '#bff4ff', 22);
     Juice.burst(this.scene, this.centerX, LANE.crowdY - 20, color, 24, 260);
     Juice.flash(this.scene, color, 110, 0.3);
     this.scene.sfx && this.scene.sfx('weapon');
   }
+
+  /* Readable weapon state: "1 ARROW", "3 ARROWS", then "RAPID I/II/III". */
+  weaponLabel() {
+    if (this.rateTier > 0) return 'RAPID ' + ['I', 'II', 'III', 'IV'][this.rateTier - 1];
+    return this.spread + (this.spread === 1 ? ' ARROW' : ' ARROWS');
+  }
+  weaponStep() { return (this.spread - 1) + this.rateTier; } // 0..(2+maxRate)
+  weaponColor() { return BALANCE.weaponColors[Math.min(this.weaponStep(), BALANCE.weaponColors.length - 1)]; }
 
   /* Remove n units (combat losses) with a poof. */
   takeLosses(n) {

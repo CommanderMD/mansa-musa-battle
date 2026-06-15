@@ -36,15 +36,17 @@ lining up under it).
 Each barrel shows two numbers: a **hit-count (HP)** that ticks down as arrows bite, and a
 **reward**. There are **two barrel types**:
 
-- **CROWD kegs** (gold/green) — grow the army: `x3`, `x2`, `+25` **units**.
-- **WEAPON kegs** (blue, 🏹) — multiply **arrows-per-unit**: `🏹x2` bows, `🏹+1` arrow.
-  Every archer starts at **1 arrow/shot**; weapon kegs raise it (1 → 2 → 4 …).
+- **CROWD kegs** (gold/green) — grow the army: default **x4** (also `x2`, `x3`, `+N`).
+- **WEAPON kegs** (blue, `WEAPON+`) — advance the weapon: **SPREAD** `1 → 2 → 3 arrows` per
+  unit, then (once maxed) **FIRE RATE** — `RAPID I → II → III`. You start at **1 soldier, 1 arrow**.
 
-**Total firepower = units × arrows-per-unit**, so the two paths combine. More units also means
-more bodies to survive enemy clashes; more arrows-per-unit means each archer hits harder — a
-real strategic choice each run. Bigger firepower breaks high-HP kegs in time. Break the safe
-low-HP keg for sure, or gamble on a greedy high-HP keg — but a barrel that reaches the column
-**alive smashes in and costs units**, so overcommitting to a keg you can't break is how you lose.
+**Total DPS = soldiers × spread × fire-rate.** A keg PAIR is an exclusive choice — break one and
+the other is dismissed. Each choice is **telegraphed**: its counter-wave is visible up the lane in
+the distance, so read the incoming count/shape before committing. Waves come in shapes:
+**wide walls** (need soldiers/coverage) and **deep columns** (need DPS/fire-rate). Early on, bodies
+matter most (1 soldier can't out-shoot 12 — take the x4); pick wrong for the incoming wave and the
+survivors crash in and **overrun you 1-for-1**. Power grows exponentially, so once you snowball you
+steamroll — the hard reads are early.
 
 ### The loop
 1. **World map** — pick an unlocked node, press the gold **PLAY** button.

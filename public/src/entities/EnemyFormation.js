@@ -6,19 +6,19 @@
  * EQUAL number of your units (1-for-1). So: out-DPS the wave before contact, or get gutted.
  * The boss is just a very large block. Spawns at a lane side so you must steer to mow it.
  */
-import { LANE, PALETTE, depthScale, laneHalfWidth } from '../config.js';
+import { LANE, PALETTE, BALANCE, depthScale, laneHalfWidth } from '../config.js';
 
 export class EnemyFormation {
-  constructor(scene, count, label, isBoss = false, side = 'C') {
+  constructor(scene, count, label, isBoss = false, side = 'C', y0 = -60) {
     this.scene = scene;
     this.count = count;
     this.maxCount = count;
-    this.hpPerEnemy = isBoss ? 2 : 1; // arrow hits to kill one raider
+    this.hpPerEnemy = isBoss ? 3 : BALANCE.enemyHpPerUnit; // arrow hits to kill one raider
     this.hp = count * this.hpPerEnemy;
     this.label = label || 'Raiders';
     this.isBoss = isBoss;
     this.side = side;
-    this.y = -60;
+    this.y = y0; // clusters stagger by starting higher up the lane
     this.units = [];
     this.dead = false;
     this.t = 0;

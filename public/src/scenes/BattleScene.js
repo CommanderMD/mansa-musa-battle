@@ -39,8 +39,7 @@ export class BattleScene extends Phaser.Scene {
     this.enemies = [];
     this.pickups = [];
     this.arrows = [];
-    this.clashTimer = 0;
-    this.fireTimer = 9999; // ready to fire the instant a barrel appears
+    this.fireTimer = 9999; // ready to fire the instant a target appears
 
     this.lane = new Lane(this);
     this.crowd = new Crowd(this, this.level.startCrowd);
@@ -71,8 +70,8 @@ export class BattleScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(802);
     this.add.text(GAME_W / 2, 56, 'ENEMIES', { fontFamily: 'Georgia, serif', fontSize: '9px', color: '#ffd7cf' }).setOrigin(0.5).setDepth(802);
 
-    this.armyTxt = this.add.text(14, 18, '🪖 8', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: hex(PALETTE.goldLight) }).setDepth(802);
-    this.weaponTxt = this.add.text(14, 40, '🏹 1× arrows', { fontFamily: 'Georgia, serif', fontSize: '11px', color: hex(PALETTE.crystal) }).setDepth(802);
+    this.armyTxt = this.add.text(14, 18, '🪖 1', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: hex(PALETTE.goldLight) }).setDepth(802);
+    this.weaponTxt = this.add.text(14, 40, '🏹 1 ARROW', { fontFamily: 'Georgia, serif', fontSize: '11px', fontStyle: 'bold', color: hex(PALETTE.crystal) }).setDepth(802);
 
     this.goldTxt = this.add.text(GAME_W - 14, 16, `🪙 ${this.registry.get('gold')}`, { fontFamily: 'Georgia, serif', fontSize: '14px', color: hex(PALETTE.goldLight) }).setOrigin(1, 0).setDepth(802);
     this.crysTxt = this.add.text(GAME_W - 14, 36, `💎 ${this.registry.get('crystals')}`, { fontFamily: 'Georgia, serif', fontSize: '14px', color: hex(0xbff4ff) }).setOrigin(1, 0).setDepth(802);
@@ -105,9 +104,17 @@ export class BattleScene extends Phaser.Scene {
       const e = tr[this.trackPtr++];
       if (e.type === 'barrels') {
         for (const it of e.items) this.barrels.push(new Barrel(this, it.side, it.hp, it.reward));
+      } else if (e.type === 'encounter') {
+        // Barrel CHOICE near + its counter-wave TELEGRAPHED far up the lane (perspective-small),
+        // so the player reads the incoming count/shape before committing crowd vs weapon.
+        const bl = new Barrel(this, 'L', e.left.hp, e.left.reward);
+        const br = new Barrel(this, 'R', e.right.hp, e.right.reward);
+        bl.sibling = br; br.sibling = bl; // breaking one dismisses the other (exclusive choice)
+        this.barrels.push(bl, br);
+        const w = e.wave;
+        this._spawnWave(w.count, w.label || 'Raiders', w.side || 'C', w.shape || 'mixed', -60 - (w.gap || BALANCE.telegraphGap));
       } else if (e.type === 'enemy') {
-        this.enemies.push(new EnemyFormation(this, e.count, e.label, !!e.boss, e.side || 'C'));
-        this.sfx('clash');
+        this._spawnWave(e.count, e.label, e.side || 'C', e.shape || 'mixed', -60);
       } else if (e.type === 'pickup') {
         this.pickups.push(new Pickup(this, e.kind, e.side));
       }
@@ -115,10 +122,43 @@ export class BattleScene extends Phaser.Scene {
     if (!this.bossSpawned && dist >= this.level.length) {
       this.bossSpawned = true;
       const b = this.level.boss;
-      this.enemies.push(new EnemyFormation(this, b.count, b.name, true, 'C'));
+      // Boss = one large dense block (out-DPS it with aligned fire or get overrun).
+      this.enemies.push(new EnemyFormation(this, b.count, b.name, true, 'C', -60));
       this._banner('FINAL STAND', PALETTE.enemy, b.name);
       this.sfx('clash');
     }
+  }
+
+  /* A wave streams down as small CLUSTERS. SHAPE drives which upgrade counters it:
+   *  - 'wide'  → clusters side-by-side across L/C/R at the same depth: a wall you must SWEEP /
+   *               cover with a big crowd (more soldiers = more arrows per cluster).
+   *  - 'deep'  → clusters stacked on ONE side: a column you align under and grind down with
+   *               sustained DPS (fire RATE / rapid).
+   *  - 'mixed' → spread across sides AND depth (the general case).
+   * Clusters you can't cover slip through and cost units 1-for-1 on contact. */
+  _spawnWave(total, label, baseSide, shape, y0base) {
+    const sz = BALANCE.enemyClusterSize;
+    const n = Math.max(1, Math.round(total / sz));
+    const sides = baseSide === 'L' ? ['L', 'C', 'R'] : baseSide === 'R' ? ['R', 'C', 'L'] : ['C', 'L', 'R'];
+    let remaining = total;
+    for (let i = 0; i < n; i++) {
+      const c = i === n - 1 ? remaining : Math.min(sz, remaining);
+      remaining -= c;
+      if (c <= 0) break;
+      let side, y0;
+      if (shape === 'wide') {
+        side = ['L', 'C', 'R'][i % 3];
+        y0 = y0base - Math.floor(i / 3) * 130; // rows of three across the lane
+      } else if (shape === 'deep') {
+        side = baseSide === 'C' ? 'C' : baseSide;
+        y0 = y0base - i * 95; // a tight deep column on one lane
+      } else {
+        side = sides[i % sides.length];
+        y0 = y0base - i * 120;
+      }
+      this.enemies.push(new EnemyFormation(this, c, label, false, side, y0));
+    }
+    this.sfx('clash');
   }
 
   /* ---- archery (v3): arrows fly STRAIGHT UP from the crowd; hits are by x-overlap only ---- */
@@ -128,12 +168,12 @@ export class BattleScene extends Phaser.Scene {
       this.enemies.some((e) => !e.dead && inZone(e));
   }
 
-  /* Volley size scales with FIREPOWER = count × arrowsPerUnit. interval scales with count.
-   * Beyond the sprite cap, each arrow carries extra hit-power so firepower stays honest. */
+  /* v4 DPS = unitCount × spread × fireRate. Each unit looses `spread` arrows/volley; rapid
+   * tiers divide the interval. Beyond the sprite cap, arrows carry extra hit-power so DPS holds. */
   _fireParams() {
-    const f = BALANCE.fire, c = this.crowd.count, apu = this.crowd.arrowsPerUnit;
-    const interval = Phaser.Math.Clamp(f.baseInterval - c * f.intervalPerUnit, f.minInterval, f.baseInterval);
-    const desired = Math.max(1, Math.round((f.arrowsBase + Math.floor(c / f.arrowsPerUnits)) * apu));
+    const f = BALANCE.fire, c = this.crowd.count, spread = this.crowd.spread, rt = this.crowd.rateTier;
+    const interval = Phaser.Math.Clamp(f.baseInterval / (1 + f.rateStepMul * rt), f.minInterval, f.baseInterval);
+    const desired = Math.max(1, Math.round(c * spread));
     const arrows = Math.min(desired, f.arrowsMaxVisual);
     const hitPower = Math.max(1, Math.round(desired / arrows));
     return { interval, arrows, hitPower };
@@ -148,7 +188,7 @@ export class BattleScene extends Phaser.Scene {
 
   _loose(n, hitPower) {
     this.sfx('twang');
-    const tint = BALANCE.weaponTiers[this.crowd.weaponTier].color;
+    const tint = this.crowd.weaponColor();
     const band = this._crowdBandHalf();
     for (let i = 0; i < n; i++) {
       // Spray across the crowd band with a CENTER-WEIGHTED (triangular) spread — denser under
@@ -207,10 +247,12 @@ export class BattleScene extends Phaser.Scene {
   _updateBarrels(dt, flow) {
     for (let i = this.barrels.length - 1; i >= 0; i--) {
       const b = this.barrels[i];
+      if (b.done) { this.barrels.splice(i, 1); continue; } // dismissed sibling (fading out)
       b.update(dt, flow * BALANCE.barrelSpeedMul);
 
       if (b.dead && !b.rewarded) {
         b.rewarded = true;
+        if (b.sibling && !b.sibling.dead && !b.sibling.done) b.sibling.dismiss(); // exclusive choice
         this.crowd.applyOp(b.reward, b.x, b.y); // multiply pop + particles + sfx
         Juice.burst(this, b.x, b.y, PALETTE.goldLight, 22, 260);
         Juice.flash(this, 0xffe9a8, 80, 0.22);
@@ -234,7 +276,7 @@ export class BattleScene extends Phaser.Scene {
   _updateEnemies(dt, flow) {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      e.update(dt, flow);
+      e.update(dt, flow * BALANCE.enemySpeedMul);
 
       if (e.dead) {
         // Whole wave shot down before reaching the column.
@@ -266,16 +308,16 @@ export class BattleScene extends Phaser.Scene {
   }
 
   _updateThreat() {
-    const front = this.enemies.find((e) => !e.dead);
-    if (front) {
-      this.threatTxt.setText(String(Math.round(front.count)));
-      this.threatBg.setFillStyle(front.isBoss ? 0x6a1f14 : PALETTE.enemy, 0.95);
+    const live = this.enemies.filter((e) => !e.dead);
+    if (live.length) {
+      const total = live.reduce((s, e) => s + Math.round(e.count), 0);
+      this.threatTxt.setText(String(total)); // remaining raiders in the current wave
+      this.threatBg.setFillStyle(live.some((e) => e.isBoss) ? 0x6a1f14 : PALETTE.enemy, 0.95);
     } else {
       this.threatTxt.setText('—');
     }
     this.armyTxt.setText(`🪖 ${Math.round(this.crowd.count)}`);
-    const apu = this.crowd.arrowsPerUnit;
-    this.weaponTxt.setText(`🏹 ${apu % 1 ? apu.toFixed(1) : apu}× arrows`);
+    this.weaponTxt.setText(`🏹 ${this.crowd.weaponLabel()}`).setColor(hex(this.crowd.weaponColor()));
   }
 
   _win() {

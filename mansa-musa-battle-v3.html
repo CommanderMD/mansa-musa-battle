@@ -127,8 +127,7 @@ const LANE = {
   topHalfW: 46,
   baseHalfW: 190,
   centerX: GAME_W / 2,
-  clashLineY: GAME_H - 230, // where the crowd "stands" and combat resolves
-  crowdY: GAME_H - 170, // crowd anchor (a touch below the clash line, nearer the player)
+  crowdY: GAME_H - 170, // crowd anchor row — where arrows launch and enemies make contact
 };
 
 /* Map a screen Y to a perspective scale (small far away, large up close). */
@@ -157,11 +156,10 @@ const BALANCE = {
     { name: 'Royal Volley', color: 0xbff4ff },
   ],
   maxArrowsPerUnit: 16, // cap on the weapon-upgrade path
-  // Enemy clash (kept Lanchester square-law). yourDmg scales with FIREPOWER = count×apu, so
-  // weapon barrels help clear waves too — but only COUNT adds bodies to absorb enemy losses.
-  clashDmgPerFirepower: 0.16, // at apu=1 this matches the old tier-0 damage
-  enemyDmgCoeff: 0.07, // per-enemy-unit damage/tick dealt to crowd
-  clashTickMs: 130, // attrition resolution cadence during a clash
+  // Enemy combat is PURE PROJECTILE-KILL (no attrition coefficients): arrows kill raiders on
+  // x-overlap, and any survivor that reaches the crowd row removes one of your units (1-for-1).
+  enemyClusterSize: 9, // a wave streams down as clusters of ~this many raiders
+  enemyHpPerUnit: 1, // arrow hits to kill one raider (boss raiders take 2)
 
   // Archery: continuous volleys fired up the lane at descending barrels. More crowd +
   // higher bow tier = more arrows, faster. This is the reinforcing loop: a bigger army
@@ -1007,16 +1005,16 @@ class Barrel {
 
 
 class EnemyFormation {
-  constructor(scene, count, label, isBoss = false, side = 'C') {
+  constructor(scene, count, label, isBoss = false, side = 'C', y0 = -60) {
     this.scene = scene;
     this.count = count;
     this.maxCount = count;
-    this.hpPerEnemy = isBoss ? 2 : 1; // arrow hits to kill one raider
+    this.hpPerEnemy = isBoss ? 2 : BALANCE.enemyHpPerUnit; // arrow hits to kill one raider
     this.hp = count * this.hpPerEnemy;
     this.label = label || 'Raiders';
     this.isBoss = isBoss;
     this.side = side;
-    this.y = -60;
+    this.y = y0; // clusters stagger by starting higher up the lane
     this.units = [];
     this.dead = false;
     this.t = 0;
@@ -1471,8 +1469,7 @@ class BattleScene extends Phaser.Scene {
     this.enemies = [];
     this.pickups = [];
     this.arrows = [];
-    this.clashTimer = 0;
-    this.fireTimer = 9999; // ready to fire the instant a barrel appears
+    this.fireTimer = 9999; // ready to fire the instant a target appears
 
     this.lane = new Lane(this);
     this.crowd = new Crowd(this, this.level.startCrowd);
@@ -1538,8 +1535,7 @@ class BattleScene extends Phaser.Scene {
       if (e.type === 'barrels') {
         for (const it of e.items) this.barrels.push(new Barrel(this, it.side, it.hp, it.reward));
       } else if (e.type === 'enemy') {
-        this.enemies.push(new EnemyFormation(this, e.count, e.label, !!e.boss, e.side || 'C'));
-        this.sfx('clash');
+        this._spawnWave(e.count, e.label, e.side || 'C');
       } else if (e.type === 'pickup') {
         this.pickups.push(new Pickup(this, e.kind, e.side));
       }
@@ -1547,10 +1543,30 @@ class BattleScene extends Phaser.Scene {
     if (!this.bossSpawned && dist >= this.level.length) {
       this.bossSpawned = true;
       const b = this.level.boss;
-      this.enemies.push(new EnemyFormation(this, b.count, b.name, true, 'C'));
+      // Boss = one large dense block (out-DPS it with aligned fire or get overrun).
+      this.enemies.push(new EnemyFormation(this, b.count, b.name, true, 'C', -60));
       this._banner('FINAL STAND', PALETTE.enemy, b.name);
       this.sfx('clash');
     }
+  }
+
+  /* A wave streams down as several small CLUSTERS spread across the lane and staggered in
+   * depth, so you must sweep your aligned fire across them — clusters you can't cover slip
+   * through and cost you units 1-for-1 on contact. */
+  _spawnWave(total, label, baseSide) {
+    const sz = BALANCE.enemyClusterSize;
+    const n = Math.max(1, Math.round(total / sz));
+    const sides = baseSide === 'L' ? ['L', 'C', 'R'] : baseSide === 'R' ? ['R', 'C', 'L'] : ['C', 'L', 'R'];
+    let remaining = total;
+    for (let i = 0; i < n; i++) {
+      const c = i === n - 1 ? remaining : Math.min(sz, remaining);
+      remaining -= c;
+      if (c <= 0) break;
+      const side = sides[i % sides.length];
+      const y0 = -60 - i * 120; // stagger so the wave arrives as a stream, not a wall
+      this.enemies.push(new EnemyFormation(this, c, label, false, side, y0));
+    }
+    this.sfx('clash');
   }
 
   /* ---- archery (v3): arrows fly STRAIGHT UP from the crowd; hits are by x-overlap only ---- */
@@ -1698,10 +1714,11 @@ class BattleScene extends Phaser.Scene {
   }
 
   _updateThreat() {
-    const front = this.enemies.find((e) => !e.dead);
-    if (front) {
-      this.threatTxt.setText(String(Math.round(front.count)));
-      this.threatBg.setFillStyle(front.isBoss ? 0x6a1f14 : PALETTE.enemy, 0.95);
+    const live = this.enemies.filter((e) => !e.dead);
+    if (live.length) {
+      const total = live.reduce((s, e) => s + Math.round(e.count), 0);
+      this.threatTxt.setText(String(total)); // remaining raiders in the current wave
+      this.threatBg.setFillStyle(live.some((e) => e.isBoss) ? 0x6a1f14 : PALETTE.enemy, 0.95);
     } else {
       this.threatTxt.setText('—');
     }

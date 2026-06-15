@@ -5,8 +5,8 @@
  * only swap data/ + palette. Keep magic numbers OUT of the scenes; put them here.
  */
 
-/* Build version — bump to v4, v5… for future refinements. Shown on boot/map. */
-export const VERSION = 'v3';
+/* Build version — bump to v5, v6… for future refinements. Shown on boot/map. */
+export const VERSION = 'v4';
 
 /* Logical design resolution (mobile portrait, ~9:16). Phaser FIT-scales this. */
 export const GAME_W = 480;
@@ -45,8 +45,7 @@ export const LANE = {
   topHalfW: 46,
   baseHalfW: 190,
   centerX: GAME_W / 2,
-  clashLineY: GAME_H - 230, // where the crowd "stands" and combat resolves
-  crowdY: GAME_H - 170, // crowd anchor (a touch below the clash line, nearer the player)
+  crowdY: GAME_H - 170, // crowd anchor row — where arrows launch and enemies make contact
 };
 
 /* Map a screen Y to a perspective scale (small far away, large up close). */
@@ -66,20 +65,16 @@ export const BALANCE = {
   renderCap: 110, // max unit sprites drawn; logical count can exceed this
   scrollSpeed: 100, // world px/sec the lane flows toward the player (v3: slowed for readability)
   steerLerp: 0.4, // how snappily the crowd follows the finger (v3: tighter, near-instant w/ light smoothing)
-  // Bow tiers — purely cosmetic now (name + arrow color), indexed by arrows-per-unit.
-  weaponTiers: [
-    { name: 'Short Bows', color: 0xf6d77a },
-    { name: 'War Bows', color: 0xf3a64b },
-    { name: 'Composite Bows', color: 0xe8b43c },
-    { name: 'Double Bows', color: 0x9be8ff },
-    { name: 'Royal Volley', color: 0xbff4ff },
-  ],
-  maxArrowsPerUnit: 16, // cap on the weapon-upgrade path
-  // Enemy clash (kept Lanchester square-law). yourDmg scales with FIREPOWER = count×apu, so
-  // weapon barrels help clear waves too — but only COUNT adds bodies to absorb enemy losses.
-  clashDmgPerFirepower: 0.16, // at apu=1 this matches the old tier-0 damage
-  enemyDmgCoeff: 0.07, // per-enemy-unit damage/tick dealt to crowd
-  clashTickMs: 130, // attrition resolution cadence during a clash
+  // v4 weapon progression: SPREAD (arrows per unit per shot) caps at 3, then weapon barrels
+  // convert to FIRE RATE (Rapid I/II/III). Arrow tint by weapon step for readability.
+  maxSpread: 3,
+  maxRateTier: 3,
+  weaponColors: [0xf6d77a, 0xf3a64b, 0xe8b43c, 0x9be8ff, 0xbff4ff, 0xffffff],
+  // Enemy combat is PURE PROJECTILE-KILL (no attrition coefficients): arrows kill raiders on
+  // x-overlap, and any survivor that reaches the crowd row removes one of your units (1-for-1).
+  enemyClusterSize: 9, // a wave streams down as clusters of ~this many raiders
+  enemyHpPerUnit: 2, // arrow hits to kill one raider (boss raiders take 3) — makes DPS matter
+  enemySpeedMul: 1.12, // enemies a touch faster than barrels: telegraph gap shrinks slowly, DPS race bites
 
   // Archery: continuous volleys fired up the lane at descending barrels. More crowd +
   // higher bow tier = more arrows, faster. This is the reinforcing loop: a bigger army
@@ -91,15 +86,18 @@ export const BALANCE = {
   // Speed is fast-but-trackable by eye; a misaligned arrow sails past and off the top.
   arrow: { speed: 440, lifespanMs: 2600 },
   fire: {
-    baseInterval: 500, // ms between volleys at crowd 0 (v3: deliberate but enough to break kegs)
-    intervalPerUnit: 1.2, // faster as the crowd grows
-    minInterval: 220,
-    arrowsBase: 2, // even a small column looses a couple of arrows per volley
-    arrowsPerUnits: 8, // +1 base arrow per this many units (then ×arrowsPerUnit) — size = more arrows
+    // DPS = unitCount × spread × fireRate. Each unit looses `spread` arrows/volley; rapid
+    // tiers divide the interval. (1 soldier + 1 arrow = a single arrow per volley.)
+    baseInterval: 480, // ms between volleys at rate tier 0
+    rateStepMul: 0.75, // each Rapid tier → interval / (1 + 0.75*tier)
+    minInterval: 120,
     arrowsMaxVisual: 26, // sprite cap; beyond this, each arrow carries extra hit-power
   },
-  // Barrels/enemies roll DOWN a touch faster than the lane flows (v3: gentle, so there's time to aim).
-  barrelSpeedMul: 1.25,
+  // v4: barrels descend at the SAME speed as the lane/enemies, so a telegraphed wave keeps a
+  // constant gap behind its barrel choice (readable timing).
+  barrelSpeedMul: 1.0,
+  // How far up-lane a telegraphed counter-wave spawns behind its barrel pair (perspective px).
+  telegraphGap: 230,
   // Damage a barrel deals to the crowd if it reaches them still alive: ceil(remHP * coeff).
   barrelReachDmg: 0.5,
 };
