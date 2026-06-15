@@ -23,7 +23,7 @@ const ORDER = [
   'systems/textures.js',
   'systems/Lane.js',
   'entities/Crowd.js',
-  'entities/Gate.js',
+  'entities/Barrel.js',
   'entities/EnemyFormation.js',
   'entities/Pickup.js',
   'scenes/BootScene.js',

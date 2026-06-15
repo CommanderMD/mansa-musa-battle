@@ -144,17 +144,38 @@ const BALANCE = {
   renderCap: 110, // max unit sprites drawn; logical count can exceed this
   scrollSpeed: 150, // world px/sec the lane flows toward the player
   steerLerp: 0.18, // how snappily the crowd follows the finger
+  // Bow tiers (the Mali archers' weapon). dmg = per-crowd-unit damage/tick in an enemy
+  // clash (kept as Lanchester square-law: the crowd wins when C/E > sqrt(enemyDmgCoeff/dmg),
+  // so a modest size edge wins decisively). Tier also boosts barrel fire-rate + arrow count.
   weaponTiers: [
-    // dmg = per-crowd-unit damage/tick. Combat is Lanchester square-law: the crowd
-    // wins when C/E > sqrt(enemyDmgCoeff / dmg). Tuned so a modest size edge wins
-    // decisively and greedy multiplication pays off, while bad gate choices cascade.
-    { name: 'Spears', fireRate: 420, dmg: 0.16, color: 0xf6d77a },
-    { name: 'Bows', fireRate: 320, dmg: 0.22, color: 0xf3a64b },
-    { name: 'Cavalry', fireRate: 240, dmg: 0.28, color: 0xe8b43c },
-    { name: 'Royal Guard', fireRate: 180, dmg: 0.36, color: 0x9be8ff },
+    { name: 'Short Bows', dmg: 0.16, color: 0xf6d77a },
+    { name: 'War Bows', dmg: 0.22, color: 0xf3a64b },
+    { name: 'Composite Bows', dmg: 0.28, color: 0xe8b43c },
+    { name: 'Royal Archers', dmg: 0.36, color: 0x9be8ff },
   ],
   enemyDmgCoeff: 0.07, // per-enemy-unit damage/tick dealt to crowd (win boundary C/E ≈ 0.66)
   clashTickMs: 130, // attrition resolution cadence during a clash
+
+  // Archery: continuous volleys fired up the lane at descending barrels. More crowd +
+  // higher bow tier = more arrows, faster. This is the reinforcing loop: a bigger army
+  // breaks high-HP barrels in time, which grows the army. Tuned (with barrelSpeedMul's
+  // short window) so a starting crowd breaks ~hp4-5, a mid crowd ~hp10, a big crowd shreds
+  // whole pairs — so greedy high-HP kegs are a real gamble early and a reward once you snowball.
+  arrow: { speed: 700, lifespanMs: 1400 },
+  fire: {
+    baseInterval: 430, // ms between volleys at crowd 0 / tier 0
+    intervalPerUnit: 1.5, // faster as the crowd grows
+    intervalPerTier: 50,
+    minInterval: 150,
+    arrowsBase: 1,
+    arrowsPerUnits: 14, // +1 arrow per this many units
+    arrowsPerTier: 1,
+    arrowsMax: 12,
+  },
+  // Barrels roll DOWN faster than the lane flows, so you have limited time to shoot them.
+  barrelSpeedMul: 1.9,
+  // Damage a barrel deals to the crowd if it reaches them still alive: ceil(remHP * coeff).
+  barrelReachDmg: 0.5,
 };
 
 
@@ -174,11 +195,17 @@ const BALANCE = {
 const MUSEUM_URL =
   'https://black-achievement-museum.ericarmstrong.workers.dev';
 
-/* Event factories keep the track readable. Distances are in world px from start. */
-const gates = (dist, left, right) => ({ type: 'gateRow', dist, left, right });
+/* Event factories keep the track readable. Distances are in world px from start.
+ * Barrels are the multiplier source now: shoot them down with arrows before they reach
+ * the crowd. `items` is 1 or 2 barrels ({ side, hp, reward }); pairs force a greedy-vs-safe
+ * choice (you can only focus one — the other chips you). reward = { op:'mul'|'add'|'weapon', v }.
+ */
+const barrels = (dist, items) => ({ type: 'barrels', dist, items });
+const mul = (hp, v) => ({ hp, reward: { op: 'mul', v } });
+const add = (hp, v) => ({ hp, reward: { op: 'add', v } });
+const arrowsUp = (hp) => ({ hp, reward: { op: 'weapon' } });
 const enemy = (dist, count, label) => ({ type: 'enemy', dist, count, label });
 const pickup = (dist, kind, side) => ({ type: 'pickup', dist, kind, side });
-const weapon = (dist, side) => ({ type: 'gateRow', dist, left: side === 'L' ? { op: 'weapon' } : { op: 'mul', v: 2 }, right: side === 'L' ? { op: 'mul', v: 2 } : { op: 'weapon' } });
 
 const CHAPTER1 = {
   id: 'mali',
@@ -189,66 +216,69 @@ const CHAPTER1 = {
     {
       id: 'm1',
       name: 'Niani — The March Begins',
-      blurb: 'Rally the column outside the capital and pick your gates wisely.',
+      blurb: 'Rally the archers and shoot down the reward kegs before they reach the column.',
       startCrowd: 8,
-      length: 4200,
+      length: 4300,
       track: [
         pickup(420, 'gold', 'L'),
-        gates(700, { op: 'add', v: 8 }, { op: 'mul', v: 2 }), // ~16
-        enemy(1150, 10, 'Bandits'),
-        pickup(1450, 'crystal', 'R'),
-        gates(1750, { op: 'mul', v: 3 }, { op: 'sub', v: 5 }), // greedy x3 vs trap → ~45
-        enemy(2250, 18, 'Raiders'),
-        pickup(2550, 'gold', 'R'),
-        weapon(2850, 'L'),
-        gates(3250, { op: 'add', v: 10 }, { op: 'mul', v: 2 }), // ~80
-        enemy(3700, 30, 'War Party'),
+        // tutorial pair: safe +12 (hp4, breakable now) vs greedy x3 (hp9, needs a bigger crowd)
+        barrels(750, [{ side: 'L', ...add(4, 12) }, { side: 'R', ...mul(9, 3) }]),
+        enemy(1250, 8, 'Bandits'),
+        pickup(1550, 'crystal', 'R'),
+        // now ~breakable: greedy x3 (hp9) vs safe +14 (hp4)
+        barrels(1900, [{ side: 'L', ...mul(9, 3) }, { side: 'R', ...add(4, 14) }]),
+        enemy(2450, 16, 'Raiders'),
+        pickup(2750, 'gold', 'R'),
+        barrels(3050, [{ side: 'C', ...arrowsUp(4) }]), // ARROWS+ upgrade
+        barrels(3450, [{ side: 'L', ...add(4, 20) }, { side: 'R', ...mul(10, 2) }]),
+        enemy(3950, 26, 'War Party'),
       ],
-      boss: { count: 80, name: 'Slaver Caravan', threshold: 55 },
+      boss: { count: 55, name: 'Slaver Caravan', threshold: 45 },
     },
     {
       id: 'm2',
       name: 'Road to Walata',
-      blurb: 'Cross the savanna toward the trade roads. Tougher waves, richer gates.',
+      blurb: 'Cross the savanna toward the trade roads. Tougher kegs, richer rewards.',
       startCrowd: 10,
-      length: 5000,
+      length: 5100,
       track: [
-        gates(600, { op: 'mul', v: 2 }, { op: 'add', v: 10 }), // ~20
-        enemy(1050, 13, 'Raiders'),
-        pickup(1350, 'crystal', 'L'),
-        gates(1650, { op: 'mul', v: 3 }, { op: 'sub', v: 5 }), // ~54
-        pickup(1950, 'gold', 'R'),
-        enemy(2300, 26, 'Desert Wolves'),
-        weapon(2650, 'R'),
-        gates(3050, { op: 'mul', v: 3 }, { op: 'mul', v: 2 }), // both reward → big
-        enemy(3500, 45, 'War Party'),
-        pickup(3800, 'crystal', 'R'),
-        gates(4150, { op: 'add', v: 10 }, { op: 'sub', v: 5 }),
-        enemy(4550, 60, 'Marauders'),
+        barrels(650, [{ side: 'L', ...add(4, 12) }, { side: 'R', ...mul(9, 3) }]),
+        enemy(1150, 12, 'Raiders'),
+        pickup(1450, 'crystal', 'L'),
+        barrels(1750, [{ side: 'L', ...mul(10, 3) }, { side: 'R', ...add(4, 16) }]),
+        pickup(2050, 'gold', 'R'),
+        enemy(2400, 22, 'Desert Wolves'),
+        barrels(2750, [{ side: 'C', ...arrowsUp(4) }]),
+        barrels(3150, [{ side: 'L', ...mul(12, 3) }, { side: 'R', ...mul(7, 2) }]),
+        enemy(3650, 38, 'War Party'),
+        pickup(3950, 'crystal', 'R'),
+        barrels(4250, [{ side: 'L', ...add(5, 25) }, { side: 'R', ...mul(13, 2) }]),
+        enemy(4750, 52, 'Marauders'),
       ],
-      boss: { count: 130, name: 'Desert Warlord', threshold: 90 },
+      boss: { count: 95, name: 'Desert Warlord', threshold: 75 },
     },
     {
       id: 'm3',
       name: 'Timbuktu — City of Gold',
       blurb: 'Defend the jewel of the empire and its great library at Sankore.',
       startCrowd: 12,
-      length: 5600,
+      length: 5700,
       track: [
-        gates(620, { op: 'mul', v: 3 }, { op: 'add', v: 10 }), // ~36
-        enemy(1100, 22, 'Raiders'),
-        pickup(1400, 'gold', 'L'),
-        weapon(1700, 'L'),
-        gates(2050, { op: 'mul', v: 2 }, { op: 'sub', v: 5 }), // ~70
-        enemy(2500, 40, 'War Party'),
-        pickup(2800, 'crystal', 'R'),
-        gates(3150, { op: 'mul', v: 3 }, { op: 'mul', v: 2 }),
-        enemy(3650, 70, 'Marauders'),
-        weapon(3950, 'R'),
-        gates(4350, { op: 'add', v: 10 }, { op: 'mul', v: 3 }),
-        enemy(4850, 95, 'Horde'),
+        barrels(650, [{ side: 'L', ...add(4, 14) }, { side: 'R', ...mul(9, 3) }]),
+        enemy(1150, 16, 'Raiders'),
+        pickup(1450, 'gold', 'L'),
+        barrels(1750, [{ side: 'C', ...arrowsUp(4) }]),
+        barrels(2150, [{ side: 'L', ...mul(11, 3) }, { side: 'R', ...add(5, 20) }]),
+        enemy(2600, 30, 'War Party'),
+        pickup(2900, 'crystal', 'R'),
+        // the brief's greedy keg: x10 (hp14, needs a big crowd) vs safe +25 (hp4)
+        barrels(3250, [{ side: 'L', ...mul(14, 10) }, { side: 'R', ...add(4, 25) }]),
+        enemy(3750, 55, 'Marauders'),
+        barrels(4050, [{ side: 'C', ...arrowsUp(5) }]),
+        barrels(4450, [{ side: 'L', ...add(6, 30) }, { side: 'R', ...mul(16, 3) }]),
+        enemy(4950, 80, 'Horde'),
       ],
-      boss: { count: 175, name: 'Sahel Conqueror', threshold: 120 },
+      boss: { count: 150, name: 'Sahel Conqueror', threshold: 110 },
     },
   ],
 };
@@ -403,6 +433,9 @@ function makeSfx() {
     clash: () => tone(120, 0.1, 'sawtooth', 0.14, 70),
     hit: () => tone(200, 0.07, 'square', 0.08, 120),
     coin: () => tone(880, 0.1, 'sine', 0.12, 1320),
+    twang: () => tone(680, 0.09, 'triangle', 0.06, 240), // bowstring release / whoosh
+    thunk: () => tone(180, 0.06, 'square', 0.05, 90), // arrow biting wood
+    smash: () => { tone(150, 0.18, 'sawtooth', 0.14, 60); setTimeout(() => tone(90, 0.16, 'square', 0.1), 40); },
     win: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.22, 'triangle', 0.14), i * 110)); },
     lose: () => { [440, 330, 220].forEach((f, i) => setTimeout(() => tone(f, 0.28, 'sawtooth', 0.12), i * 130)); },
     gate: () => tone(520, 0.08, 'sine', 0.07, 720),
@@ -509,6 +542,33 @@ function buildTextures(scene) {
   g.fillStyle(0x4f9460, 1);
   g.fillEllipse(16, 14, 22, 12);
   g.generateTexture('tree', 32, 44);
+
+  // Wooden barrel (destructible reward keg). Clear staves + hoops for a readable silhouette.
+  g.clear();
+  g.fillStyle(0x000000, 0.18);
+  g.fillEllipse(22, 50, 38, 8);
+  g.fillStyle(0x6e4326, 1); // body
+  g.fillRoundedRect(4, 6, 36, 42, 9);
+  g.fillStyle(0x7d4d2c, 1); // stave highlights
+  for (let i = 0; i < 4; i++) g.fillRect(9 + i * 8, 8, 3, 38);
+  g.fillStyle(0x3f2716, 1); // hoops
+  g.fillRect(3, 12, 38, 4);
+  g.fillRect(3, 38, 38, 4);
+  g.fillStyle(0xc9923f, 1); // brass rim glints
+  g.fillRect(3, 12, 38, 1.5);
+  g.fillRect(3, 38, 38, 1.5);
+  g.generateTexture('barrel', 44, 56);
+
+  // Arrow (bow shaft + head + fletching), pointing UP.
+  g.clear();
+  g.fillStyle(0x6b4a2a, 1); // shaft
+  g.fillRect(4, 4, 2, 16);
+  g.fillStyle(0xd9d2c4, 1); // head
+  g.fillTriangle(5, 0, 1, 7, 9, 7);
+  g.fillStyle(0xe8b43c, 1); // fletching
+  g.fillTriangle(5, 16, 1, 22, 5, 20);
+  g.fillTriangle(5, 16, 9, 22, 5, 20);
+  g.generateTexture('arrow', 10, 24);
 
   // Dune mound for desert flanks
   g.clear();
@@ -797,107 +857,101 @@ class Crowd {
 }
 
 
-/* ===== entities/Gate.js ===== */
+/* ===== entities/Barrel.js ===== */
 /*
- * Gate.js — A row of two multiplier gates (left + right) the crowd steers through.
- * Each side shows an operation banner (x2 / x3 / +10 / -5 / Weapon+). When the row
- * scrolls down past the crowd line, the side the crowd center is under is applied once.
+ * Barrel.js — A destructible reward keg that rolls DOWN the lane toward the crowd.
  *
- * Drawn as a translucent colored archway that scales with perspective as it nears.
+ * Shows two numbers: HP (arrow hits left to destroy it, ticks down as arrows bite) and a
+ * REWARD label (x10 / x2 / +25 / ARROWS+) applied to the crowd when it breaks. Destroy it
+ * with arrows BEFORE it reaches the crowd → reward fires (the multiply pop). If it reaches
+ * the crowd alive, it smashes into them and costs units. Barrels spawn singly or in pairs
+ * (steer to choose which to focus); the un-focused one chips you — the greedy-vs-safe core.
+ *
+ * The scene owns reward/chip application (it has the crowd + juice); this entity owns its
+ * HP, art, descent, perspective scaling, and hit feedback.
  */
 
 
-const opColor = (op) => {
-  if (op.op === 'sub') return PALETTE.enemy;
-  if (op.op === 'weapon') return PALETTE.crystal;
-  if (op.op === 'mul') return PALETTE.green;
-  return PALETTE.gold; // add
-};
-const opLabel = (op) =>
-  op.op === 'add' ? `+${op.v}` : op.op === 'sub' ? `-${op.v}` : op.op === 'mul' ? `x${op.v}` : 'WEAPON+';
 
-class GateSide {
-  constructor(scene, op) {
-    this.op = op;
-    this.color = opColor(op);
-    this.g = scene.add.graphics().setDepth(300);
-    this.label = scene.add
-      .text(0, 0, opLabel(op), {
-        fontFamily: 'Georgia, serif',
-        fontSize: '30px',
-        fontStyle: 'bold',
-        color: '#ffffff',
-        stroke: hex(PALETTE.ink),
-        strokeThickness: 5,
-        align: 'center',
-        wordWrap: { width: 110 },
+const rewardColor = (r) =>
+  r.op === 'weapon' ? PALETTE.crystal : r.op === 'mul' ? PALETTE.green : PALETTE.gold;
+const rewardLabel = (r) =>
+  r.op === 'weapon' ? 'ARROWS+' : r.op === 'mul' ? `x${r.v}` : `+${r.v}`;
+
+class Barrel {
+  constructor(scene, side, hp, reward) {
+    this.scene = scene;
+    this.side = side; // 'L' | 'C' | 'R'
+    this.hp = hp;
+    this.hpMax = hp;
+    this.reward = reward;
+    this.y = -50;
+    this.dead = false;
+    this.done = false;
+    this.rewarded = false;
+
+    this.sprite = scene.add.image(0, 0, 'barrel').setOrigin(0.5, 0.85).setDepth(330);
+
+    // Reward banner on the body.
+    this.rewardTxt = scene.add
+      .text(0, 0, rewardLabel(reward), {
+        fontFamily: 'Georgia, serif', fontSize: '17px', fontStyle: 'bold',
+        color: '#fff', stroke: hex(PALETTE.ink), strokeThickness: 4,
       })
       .setOrigin(0.5)
-      .setDepth(320);
-  }
-  draw(cx, y, halfW, sc) {
-    const w = halfW * 2 * 0.92;
-    const h = 96 * sc;
-    const x = cx - w / 2;
-    const top = y - h;
-    const g = this.g;
-    g.clear();
-    g.fillStyle(this.color, 0.22);
-    g.fillRect(x, top, w, h);
-    g.lineStyle(Math.max(2, 5 * sc), this.color, 0.95);
-    g.strokeRect(x, top, w, h);
-    // posts
-    g.fillStyle(this.color, 0.9);
-    g.fillRect(x - 4 * sc, top, 6 * sc, h);
-    g.fillRect(x + w - 2 * sc, top, 6 * sc, h);
-    this.label.setPosition(cx, top + h * 0.4).setScale(Phaser.Math.Clamp(sc, 0.7, 1.15));
-  }
-  destroy() { this.g.destroy(); this.label.destroy(); }
-}
+      .setDepth(332);
 
-class GateRow {
-  constructor(scene, data) {
-    this.scene = scene;
-    this.y = -40;
-    this.left = new GateSide(scene, data.left);
-    this.right = new GateSide(scene, data.right);
-    this.applied = false;
-    this.done = false;
+    // HP chip above the barrel.
+    this.hpBg = scene.add.circle(0, 0, 15, rewardColor(reward), 0.95).setStrokeStyle(2.5, PALETTE.ink).setDepth(333);
+    this.hpTxt = scene.add
+      .text(0, 0, String(hp), {
+        fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold',
+        color: '#fff', stroke: hex(PALETTE.ink), strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(334);
   }
 
-  update(dt, scrollPx, crowd) {
-    this.y += scrollPx;
-    const sc = depthScale(this.y);
+  /* Current lane X for this barrel's side at its current depth. */
+  get x() {
     const half = laneHalfWidth(this.y);
-    const leftCx = LANE.centerX - half / 2;
-    const rightCx = LANE.centerX + half / 2;
-    this.left.draw(leftCx, this.y, half / 2, sc);
-    this.right.draw(rightCx, this.y, half / 2, sc);
-
-    // Apply when the row sweeps through the crowd band.
-    if (!this.applied && this.y >= LANE.crowdY - 6) {
-      this.applied = true;
-      const pick = crowd.centerX <= LANE.centerX ? this.left : this.right;
-      const px = crowd.centerX <= LANE.centerX ? leftCx : rightCx;
-      crowd.applyOp(pick.op, px, LANE.crowdY);
-      // Fade the chosen side out, dim the other.
-      this._fade(pick, true);
-      this._fade(pick === this.left ? this.right : this.left, false);
-    }
-
-    if (this.y > LANE.baseY + 120) this.done = true;
+    if (this.side === 'L') return LANE.centerX - half * 0.42;
+    if (this.side === 'R') return LANE.centerX + half * 0.42;
+    return LANE.centerX;
   }
 
-  _fade(side, chosen) {
-    this.scene.tweens.add({
-      targets: [side.g, side.label],
-      alpha: 0,
-      duration: chosen ? 320 : 180,
-      onComplete: () => {},
-    });
+  /* One arrow bites the barrel. Returns true if this hit destroyed it. */
+  hit() {
+    if (this.dead) return false;
+    this.hp -= 1;
+    this.hpTxt.setText(String(Math.max(0, this.hp)));
+    Juice.punch(this.scene, this.hpBg, 1.3, 90);
+    this.scene.tweens.add({ targets: this.sprite, x: this.sprite.x + Phaser.Math.Between(-2, 2), duration: 40, yoyo: true });
+    this.sprite.setTintFill(0xffffff);
+    this.scene.time.delayedCall(40, () => this.sprite && this.sprite.clearTint());
+    Juice.burst(this.scene, this.sprite.x, this.y - 20 * depthScale(this.y), 0xcaa15a, 4, 90);
+    if (this.hp <= 0) { this.dead = true; return true; }
+    return false;
   }
 
-  destroy() { this.left.destroy(); this.right.destroy(); }
+  update(dt, scrollPx) {
+    this.y += scrollPx;
+    const sc = depthScale(this.y) * 1.15;
+    const x = this.x;
+    this.sprite.setPosition(x, this.y).setScale(sc).setDepth(330 + this.y * 0.1);
+    this.rewardTxt.setPosition(x, this.y - 22 * sc).setScale(Phaser.Math.Clamp(sc, 0.7, 1.2));
+    this.hpBg.setPosition(x, this.y - 48 * sc).setScale(Phaser.Math.Clamp(sc, 0.7, 1.2));
+    this.hpTxt.setPosition(x, this.y - 48 * sc).setScale(Phaser.Math.Clamp(sc, 0.7, 1.2));
+  }
+
+  get reachedCrowd() { return this.y >= LANE.crowdY - 8; }
+
+  destroy() {
+    this.sprite.destroy();
+    this.rewardTxt.destroy();
+    this.hpBg.destroy();
+    this.hpTxt.destroy();
+  }
 }
 
 
@@ -1318,16 +1372,18 @@ class MapScene extends Phaser.Scene {
 
 /* ===== scenes/BattleScene.js ===== */
 /*
- * BattleScene — the core "multiplier march" loop.
+ * BattleScene — the core "archery march" loop.
  *
- * Flow: the lane scrolls toward a fixed crowd band. A distance-ordered track streams
- * gate rows, enemy waves, and pickups down the lane. The player drags to steer the
- * whole crowd left/right; gates apply their op; enemy waves clash on contact via
- * attrition (crowd size x weapon tier vs enemy count). A boss caps the level and needs
- * a threshold crowd. Win = boss defeated; lose = crowd hits zero.
+ * Flow: the lane scrolls toward a fixed crowd band of Mali archers. A distance-ordered
+ * track streams down DESTRUCTIBLE REWARD BARRELS, enemy waves, and pickups. The player
+ * drags to steer the whole crowd; the crowd auto-looses ARROW volleys (more units + higher
+ * bow tier = more arrows, faster) at the nearest barrel. Shoot a barrel's HP to zero before
+ * it reaches you → its reward (x10 / +25 / ARROWS+) grows the army. A barrel that reaches the
+ * column alive smashes in and costs units. Enemy waves clash via attrition (rendered as
+ * arrow volleys); a boss caps the level. Win = boss defeated; lose = crowd hits zero.
  *
- * Everything visual/feel-related is delegated to Lane / Crowd / Gate / EnemyFormation /
- * Pickup / Juice so this scene stays a readable orchestrator.
+ * Visual/feel work is delegated to Lane / Crowd / Barrel / EnemyFormation / Pickup / Juice
+ * so this scene stays a readable orchestrator.
  */
 
 
@@ -1352,10 +1408,12 @@ class BattleScene extends Phaser.Scene {
     this.over = false;
     this.goldEarned = 0;
     this.crystalsEarned = 0;
-    this.gates = [];
+    this.barrels = [];
     this.enemies = [];
     this.pickups = [];
+    this.arrows = [];
     this.clashTimer = 0;
+    this.fireTimer = 9999; // ready to fire the instant a barrel appears
 
     this.lane = new Lane(this);
     this.crowd = new Crowd(this, this.level.startCrowd);
@@ -1375,11 +1433,10 @@ class BattleScene extends Phaser.Scene {
     this.input.on('pointerup', () => { this.dragging = false; });
   }
 
-  /* ---- HUD: top-center threat counter (the "69"), progress, currency, weapon ---- */
+  /* ---- HUD: top-center threat counter, progress, currency, bow tier ---- */
   _hud() {
     this.add.rectangle(GAME_W / 2, 26, GAME_W, 52, PALETTE.ink, 0.55).setDepth(800).setScrollFactor(0);
 
-    // Top-center enemy/threat counter
     this.threatBg = this.add.circle(GAME_W / 2, 30, 26, PALETTE.enemy, 0.9).setStrokeStyle(3, 0x3a120b).setDepth(801);
     this.threatTxt = this.add.text(GAME_W / 2, 30, '—', {
       fontFamily: 'Georgia, serif', fontSize: '26px', fontStyle: 'bold', color: '#fff',
@@ -1387,19 +1444,15 @@ class BattleScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(802);
     this.add.text(GAME_W / 2, 56, 'ENEMIES', { fontFamily: 'Georgia, serif', fontSize: '9px', color: '#ffd7cf' }).setOrigin(0.5).setDepth(802);
 
-    // Left: army count
-    this.armyTxt = this.add.text(14, 18, '🛡 8', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: hex(PALETTE.goldLight) }).setDepth(802);
-    this.weaponTxt = this.add.text(14, 40, 'Spears', { fontFamily: 'Georgia, serif', fontSize: '11px', color: hex(PALETTE.crystal) }).setDepth(802);
+    this.armyTxt = this.add.text(14, 18, '🏹 8', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: hex(PALETTE.goldLight) }).setDepth(802);
+    this.weaponTxt = this.add.text(14, 40, 'Short Bows', { fontFamily: 'Georgia, serif', fontSize: '11px', color: hex(PALETTE.crystal) }).setDepth(802);
 
-    // Right: currency
     this.goldTxt = this.add.text(GAME_W - 14, 16, `🪙 ${this.registry.get('gold')}`, { fontFamily: 'Georgia, serif', fontSize: '14px', color: hex(PALETTE.goldLight) }).setOrigin(1, 0).setDepth(802);
     this.crysTxt = this.add.text(GAME_W - 14, 36, `💎 ${this.registry.get('crystals')}`, { fontFamily: 'Georgia, serif', fontSize: '14px', color: hex(0xbff4ff) }).setOrigin(1, 0).setDepth(802);
 
-    // Progress bar (bottom)
     this.add.rectangle(GAME_W / 2, GAME_H - 8, GAME_W - 24, 8, 0x000000, 0.4).setDepth(800);
     this.progBar = this.add.rectangle(12, GAME_H - 8, 2, 8, PALETTE.gold).setOrigin(0, 0.5).setDepth(801);
 
-    // Pause / back
     const back = this.add.text(GAME_W - 14, GAME_H - 26, '⏏ Map', { fontFamily: 'Georgia, serif', fontSize: '13px', color: '#fff', backgroundColor: 'rgba(42,28,12,0.6)', padding: { x: 6, y: 3 } })
       .setOrigin(1, 1).setDepth(805).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.scene.start('Map'));
@@ -1423,17 +1476,103 @@ class BattleScene extends Phaser.Scene {
     const tr = this.level.track;
     while (this.trackPtr < tr.length && tr[this.trackPtr].dist <= dist) {
       const e = tr[this.trackPtr++];
-      if (e.type === 'gateRow') this.gates.push(new GateRow(this, e));
-      else if (e.type === 'enemy') { this.enemies.push(new EnemyFormation(this, e.count, e.label, !!e.boss)); this.sfx('clash'); }
-      else if (e.type === 'pickup') this.pickups.push(new Pickup(this, e.kind, e.side));
+      if (e.type === 'barrels') {
+        for (const it of e.items) this.barrels.push(new Barrel(this, it.side, it.hp, it.reward));
+      } else if (e.type === 'enemy') {
+        this.enemies.push(new EnemyFormation(this, e.count, e.label, !!e.boss));
+        this.sfx('clash');
+      } else if (e.type === 'pickup') {
+        this.pickups.push(new Pickup(this, e.kind, e.side));
+      }
     }
-    // Boss at the end of the level.
     if (!this.bossSpawned && dist >= this.level.length) {
       this.bossSpawned = true;
       const b = this.level.boss;
       this.enemies.push(new EnemyFormation(this, b.count, b.name, true));
       this._banner('FINAL STAND', PALETTE.enemy, b.name);
       this.sfx('clash');
+    }
+  }
+
+  /* ---- archery: pick the nearest barrel (steer to choose) and loose volleys ---- */
+  _fireTarget() {
+    const live = this.barrels.filter((b) => !b.dead && !b.done && b.y > LANE.topY - 10);
+    if (!live.length) return null;
+    live.sort((a, b) =>
+      Math.abs(a.x - this.crowd.centerX) - Math.abs(b.x - this.crowd.centerX) || b.y - a.y);
+    return live[0];
+  }
+
+  _fireParams() {
+    const f = BALANCE.fire, c = this.crowd.count, t = this.crowd.weaponTier;
+    const interval = Phaser.Math.Clamp(f.baseInterval - c * f.intervalPerUnit - t * f.intervalPerTier, f.minInterval, f.baseInterval);
+    const arrows = Phaser.Math.Clamp(f.arrowsBase + Math.floor(c / f.arrowsPerUnits) + t * f.arrowsPerTier, 1, f.arrowsMax);
+    return { interval, arrows };
+  }
+
+  _loose(n, target) {
+    this.sfx('twang');
+    const hw = 18 + Math.min(24, Math.sqrt(this.crowd.count) * 2);
+    for (let i = 0; i < n; i++) {
+      const a = this.add.image(this.crowd.centerX + Phaser.Math.Between(-hw, hw), LANE.crowdY - 14, 'arrow').setDepth(600);
+      a.target = target;
+      const dx = target.x - a.x, dy = target.y - a.y, d = Math.hypot(dx, dy) || 1;
+      a.vx = (dx / d) * BALANCE.arrow.speed;
+      a.vy = (dy / d) * BALANCE.arrow.speed;
+      a.life = BALANCE.arrow.lifespanMs;
+      this.arrows.push(a);
+    }
+    while (this.arrows.length > 200) { const old = this.arrows.shift(); old.destroy(); }
+  }
+
+  _updateArrows(dt) {
+    const step = dt / 1000;
+    for (let i = this.arrows.length - 1; i >= 0; i--) {
+      const a = this.arrows[i];
+      a.life -= dt;
+      const t = a.target;
+      if (t && !t.dead && !t.done) {
+        const dx = t.x - a.x, dy = t.y - a.y, d = Math.hypot(dx, dy) || 1;
+        a.vx = (dx / d) * BALANCE.arrow.speed;
+        a.vy = (dy / d) * BALANCE.arrow.speed;
+        if (d < 20 * depthScale(a.y) + 8) {
+          t.hit();
+          if (Math.random() < 0.3) this.sfx('thunk');
+          a.destroy(); this.arrows.splice(i, 1); continue;
+        }
+      }
+      a.x += a.vx * step;
+      a.y += a.vy * step;
+      a.rotation = Math.atan2(a.vy, a.vx) + Math.PI / 2;
+      a.setScale(Phaser.Math.Clamp(depthScale(a.y) * 1.1, 0.6, 1.25));
+      if (a.y < LANE.topY - 30 || a.life <= 0) { a.destroy(); this.arrows.splice(i, 1); }
+    }
+  }
+
+  /* ---- resolve barrels that broke (reward) or reached the crowd (chip) ---- */
+  _updateBarrels(dt, flow) {
+    for (let i = this.barrels.length - 1; i >= 0; i--) {
+      const b = this.barrels[i];
+      b.update(dt, flow * BALANCE.barrelSpeedMul);
+
+      if (b.dead && !b.rewarded) {
+        b.rewarded = true;
+        this.crowd.applyOp(b.reward, b.x, b.y); // multiply pop + particles + sfx
+        Juice.burst(this, b.x, b.y, PALETTE.goldLight, 22, 260);
+        Juice.flash(this, 0xffe9a8, 80, 0.22);
+        Juice.shake(this, 0.005, 130);
+        this.sfx('smash');
+        b.destroy(); this.barrels.splice(i, 1); continue;
+      }
+      if (!b.dead && b.reachedCrowd) {
+        const dmg = Math.max(1, Math.ceil(b.hp * BALANCE.barrelReachDmg));
+        this.crowd.takeLosses(dmg);
+        Juice.popText(this, b.x, LANE.crowdY - 30, `-${dmg}`, '#ff8d7a', 26);
+        Juice.burst(this, b.x, LANE.crowdY - 18, 0x8a5a2a, 16, 200);
+        Juice.shake(this, 0.007, 160);
+        this.sfx('smash');
+        b.destroy(); this.barrels.splice(i, 1); continue;
+      }
     }
   }
 
@@ -1450,8 +1589,7 @@ class BattleScene extends Phaser.Scene {
     const yourDmg = Math.max(1, Math.round(this.crowd.count * w.dmg));
     const enemyDmg = Math.max(1, Math.round(front.count * BALANCE.enemyDmgCoeff));
 
-    // visuals: a volley from the crowd into the enemy block
-    this._volley(this.crowd.centerX, LANE.crowdY - 24, front.centerX, front.y, w.color);
+    this._volley(front, w.color); // render the trade as an arrow volley
     Juice.burst(this, front.centerX, front.y, PALETTE.enemy, 8, 150);
     this.sfx('hit');
 
@@ -1463,8 +1601,7 @@ class BattleScene extends Phaser.Scene {
       Juice.flash(this, 0xffe9a8, 90, 0.25);
       Juice.shake(this, 0.006, 160);
       this.sfx('pop');
-      const reward = front.isBoss ? 60 : 15;
-      this.addGold(reward);
+      this.addGold(front.isBoss ? 60 : 15);
       if (front.isBoss) this._win();
       front.destroy();
       this.enemies = this.enemies.filter((e) => e !== front);
@@ -1472,12 +1609,15 @@ class BattleScene extends Phaser.Scene {
     if (this.crowd.count <= 0 && !this.over) this._lose();
   }
 
-  _volley(x0, y0, x1, y1, color) {
-    for (let i = 0; i < 4; i++) {
-      const s = this.add.image(x0 + Phaser.Math.Between(-14, 14), y0, 'shard').setTint(color).setDepth(600).setScale(1.4);
+  /* A burst of arrows from the crowd into an enemy formation (visual). */
+  _volley(enemy, color) {
+    const n = Phaser.Math.Clamp(2 + Math.floor(this.crowd.count / 12), 2, 8);
+    this.sfx('twang');
+    for (let i = 0; i < n; i++) {
+      const a = this.add.image(this.crowd.centerX + Phaser.Math.Between(-16, 16), LANE.crowdY - 14, 'arrow').setTint(color).setDepth(600);
       this.tweens.add({
-        targets: s, x: x1 + Phaser.Math.Between(-16, 16), y: y1, duration: 110, ease: 'Quad.in',
-        onComplete: () => s.destroy(),
+        targets: a, x: enemy.centerX + Phaser.Math.Between(-18, 18), y: enemy.y,
+        rotation: 0, duration: 120, ease: 'Quad.in', onComplete: () => a.destroy(),
       });
     }
   }
@@ -1490,7 +1630,7 @@ class BattleScene extends Phaser.Scene {
     } else {
       this.threatTxt.setText('—');
     }
-    this.armyTxt.setText(`🛡 ${Math.round(this.crowd.count)}`);
+    this.armyTxt.setText(`🏹 ${Math.round(this.crowd.count)}`);
     this.weaponTxt.setText(BALANCE.weaponTiers[this.crowd.weaponTier].name);
   }
 
@@ -1498,10 +1638,8 @@ class BattleScene extends Phaser.Scene {
     if (this.over) return;
     this.over = true;
     this.sfx('win');
-    // Unlock the next level.
     const cur = this.registry.get('unlocked');
     if (this.levelIndex + 1 > cur && this.levelIndex + 1 < CHAPTER1.levels.length) this.registry.set('unlocked', this.levelIndex + 1);
-    this.registry.get('save')(this.registry);
     this.crystalsEarned += 3; this.registry.set('crystals', this.registry.get('crystals') + 3);
     this.registry.get('save')(this.registry);
     this.time.delayedCall(700, () => this.scene.start('Result', {
@@ -1519,7 +1657,7 @@ class BattleScene extends Phaser.Scene {
   }
 
   update(time, delta) {
-    if (this.over) { this.crowd.update(delta); return; }
+    if (this.over) { this.crowd.update(delta); this._updateArrows(delta); return; }
 
     if (this.startDelay > 0) {
       this.startDelay -= delta;
@@ -1529,7 +1667,6 @@ class BattleScene extends Phaser.Scene {
     }
 
     const scrollPx = BALANCE.scrollSpeed * (delta / 1000);
-    // Halt forward scroll of the world while a clash is happening at the line.
     const clashing = this.enemies.some((e) => e.reachedClash && !e.dead);
     const flow = clashing ? 0 : scrollPx;
 
@@ -1539,18 +1676,27 @@ class BattleScene extends Phaser.Scene {
     this.lane.update(delta, flow);
     this.crowd.update(delta);
 
-    for (let i = this.gates.length - 1; i >= 0; i--) { const g = this.gates[i]; g.update(delta, flow, this.crowd); if (g.done) { g.destroy(); this.gates.splice(i, 1); } }
+    this._updateBarrels(delta, flow);
     for (let i = this.pickups.length - 1; i >= 0; i--) { const p = this.pickups[i]; p.update(delta, flow, this.crowd); if (p.done) { p.destroy(); this.pickups.splice(i, 1); } }
     for (const e of this.enemies) e.update(delta, flow);
+
+    // Archery: fire at the nearest barrel; otherwise hold ready.
+    const target = this._fireTarget();
+    if (target) {
+      this.fireTimer += delta;
+      const fp = this._fireParams();
+      if (this.fireTimer >= fp.interval) { this.fireTimer = 0; this._loose(fp.arrows, target); }
+    } else {
+      this.fireTimer = 9999;
+    }
+    this._updateArrows(delta);
 
     this._resolveClash(delta);
     this._updateThreat();
 
-    // progress bar (cap until boss resolves)
     const prog = Phaser.Math.Clamp(this.dist / (this.level.length + 400), 0, 1);
     this.progBar.width = Math.max(2, (GAME_W - 24) * prog);
 
-    // Lose if a gate zeroed the crowd outside combat.
     if (this.crowd.count <= 0 && !this.over) this._lose();
   }
 }

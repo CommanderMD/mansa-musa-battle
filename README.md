@@ -1,10 +1,12 @@
 # Black Excellence: Multiplier Battle
 ### Chapter 1 — The Golden Age of Mali · Anchor: Mansa Musa
 
-A mobile-portrait **2.5D "multiplier march" lane auto-battler** in the spirit of crowd-army
-clash games. Steer a marching column of the Mali Empire up a receding lane, run it through
-multiplier gates to grow your army, smash through raider waves, grab gold and crystals, and
-beat the boss formation at the lane's end. Win a level and you unlock a historically accurate
+A mobile-portrait **2.5D "archery march" lane auto-battler** in the spirit of crowd-army
+clash games. Steer a marching column of Mali archers up a receding lane; they auto-loose
+**arrow volleys** at **destructible reward barrels** rolling toward you — shoot a barrel's
+HP to zero before it reaches the column to grow your army (greedy high-HP kegs vs safe ones
+is the core choice). Smash through raider waves, grab gold and crystals, and beat the boss
+formation at the lane's end. Win a level and you unlock a historically accurate
 **dossier** on Mansa Musa, with a "Read more" link to the live
 [Black Achievement Digital Museum](https://black-achievement-museum.ericarmstrong.workers.dev).
 
@@ -21,16 +23,20 @@ at runtime — zero binary assets), so it deploys cleanly on Cloudflare Workers 
 | Input | Action |
 | --- | --- |
 | **Drag** (touch or mouse, anywhere) | Steer the whole crowd left/right |
-| Tap a gate side | The crowd applies that gate's op when it passes through it |
+| (automatic) | The crowd auto-fires arrow volleys at the **nearest** barrel — steer to choose which one |
 | **PLAY / CONTINUE / RETRY** buttons | Navigate menus |
 
-The column auto-advances; the only thing you control is **which gates you steer through**.
-Greedy `×3` vs safe `+10`, and avoid the red `−5` trap. Grab `Weapon+` to raise your fire tier.
+The column auto-advances and auto-shoots; you control **which barrel your archers focus**.
+Each barrel shows two numbers: a **hit-count (HP)** that ticks down as arrows bite, and a
+**reward** (`x10` / `+25` / `ARROWS+`). Bigger crowd = more arrows / faster fire, so a large
+army breaks high-HP kegs in time. Break the safe low-HP keg for sure, or gamble on the greedy
+high-HP keg for a big multiply — but a barrel that reaches the column **alive smashes in and
+costs units**, so overcommitting to a keg you can't break is how you lose.
 
 ### The loop
 1. **World map** — pick an unlocked node, press the gold **PLAY** button.
-2. **Battle** — steer through multiplier gates (`×2 ×3 +10 −5` and `Weapon+`), grab gold
-   chests + crystals, and clash with enemy waves (top-center counter = enemy strength).
+2. **Battle** — shoot down reward barrels (`x2 x3 +25` and `ARROWS+`), grab gold chests +
+   crystals, and clash with enemy waves (top-center counter = enemy strength).
 3. **Boss** — a large formation at the end needs a threshold-size crowd.
 4. **Victory** — winged banner, reward tiles, and a Mansa Musa dossier card. The next level
    unlocks. **Defeat** — retry.
@@ -88,15 +94,15 @@ mansa-musa-battle/
         ├── main.js           # Phaser bootstrap + scene graph
         ├── config.js         # ALL tuning: palette, lane geometry, balance numbers
         ├── data/
-        │   └── chapters.js   # Chapter-1 levels (the "track"), boss, + Mansa Musa dossier
+        │   └── chapters.js   # Chapter-1 levels (the "track": barrels/enemies/pickups), + dossier
         ├── systems/
-        │   ├── textures.js   # procedural placeholder art (units, chests, crystals, trees…)
+        │   ├── textures.js   # procedural placeholder art (archers, barrels, arrows, chests…)
         │   ├── Lane.js       # painted 2.5D backdrop + scrolling flank props
         │   ├── juice.js      # shake, flash, particle bursts, pop text, scale punch
-        │   └── audio.js      # zero-asset WebAudio sfx
+        │   └── audio.js      # zero-asset WebAudio sfx (incl. bow twang / barrel smash)
         ├── entities/
-        │   ├── Crowd.js          # player column: count, formation, steering, pops
-        │   ├── Gate.js           # multiplier gate rows
+        │   ├── Crowd.js          # archer column: count, formation, steering, bow tier, pops
+        │   ├── Barrel.js         # destructible reward kegs (HP + reward, descend & smash)
         │   ├── EnemyFormation.js # enemy waves + boss (health bars, counters)
         │   └── Pickup.js         # gold chests + crystals
         └── scenes/
@@ -117,8 +123,9 @@ lives in `systems/juice.js`.
 The engine is data-driven so the remaining chapters slot in with no scene changes:
 
 1. **Add a chapter** in `src/data/chapters.js` following the `CHAPTER1` shape:
-   - `levels[]` each with a `track` (a distance-ordered list of `gateRow` / `enemy` /
-     `pickup` events), a `boss`, `startCrowd`, and `length`.
+   - `levels[]` each with a `track` (a distance-ordered list of `barrels` / `enemy` /
+     `pickup` events), a `boss`, `startCrowd`, and `length`. A `barrels` event holds 1–2
+     kegs `{ side, hp, reward }`; pairs create the greedy-vs-safe choice.
    - a `DOSSIER`-style object with **accurate, sourced** facts for that era's anchor figure.
 2. **Reskin the palette** in `config.js` (`PALETTE`) and the art in `systems/textures.js`
    (e.g. different robes, terrain props). The lane geometry and feel carry over.

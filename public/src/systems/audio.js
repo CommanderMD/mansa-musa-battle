@@ -34,6 +34,9 @@ export function makeSfx() {
     clash: () => tone(120, 0.1, 'sawtooth', 0.14, 70),
     hit: () => tone(200, 0.07, 'square', 0.08, 120),
     coin: () => tone(880, 0.1, 'sine', 0.12, 1320),
+    twang: () => tone(680, 0.09, 'triangle', 0.06, 240), // bowstring release / whoosh
+    thunk: () => tone(180, 0.06, 'square', 0.05, 90), // arrow biting wood
+    smash: () => { tone(150, 0.18, 'sawtooth', 0.14, 60); setTimeout(() => tone(90, 0.16, 'square', 0.1), 40); },
     win: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.22, 'triangle', 0.14), i * 110)); },
     lose: () => { [440, 330, 220].forEach((f, i) => setTimeout(() => tone(f, 0.28, 'sawtooth', 0.12), i * 130)); },
     gate: () => tone(520, 0.08, 'sine', 0.07, 720),

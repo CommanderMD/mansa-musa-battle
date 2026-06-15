@@ -95,6 +95,33 @@ export function buildTextures(scene) {
   g.fillEllipse(16, 14, 22, 12);
   g.generateTexture('tree', 32, 44);
 
+  // Wooden barrel (destructible reward keg). Clear staves + hoops for a readable silhouette.
+  g.clear();
+  g.fillStyle(0x000000, 0.18);
+  g.fillEllipse(22, 50, 38, 8);
+  g.fillStyle(0x6e4326, 1); // body
+  g.fillRoundedRect(4, 6, 36, 42, 9);
+  g.fillStyle(0x7d4d2c, 1); // stave highlights
+  for (let i = 0; i < 4; i++) g.fillRect(9 + i * 8, 8, 3, 38);
+  g.fillStyle(0x3f2716, 1); // hoops
+  g.fillRect(3, 12, 38, 4);
+  g.fillRect(3, 38, 38, 4);
+  g.fillStyle(0xc9923f, 1); // brass rim glints
+  g.fillRect(3, 12, 38, 1.5);
+  g.fillRect(3, 38, 38, 1.5);
+  g.generateTexture('barrel', 44, 56);
+
+  // Arrow (bow shaft + head + fletching), pointing UP.
+  g.clear();
+  g.fillStyle(0x6b4a2a, 1); // shaft
+  g.fillRect(4, 4, 2, 16);
+  g.fillStyle(0xd9d2c4, 1); // head
+  g.fillTriangle(5, 0, 1, 7, 9, 7);
+  g.fillStyle(0xe8b43c, 1); // fletching
+  g.fillTriangle(5, 16, 1, 22, 5, 20);
+  g.fillTriangle(5, 16, 9, 22, 5, 20);
+  g.generateTexture('arrow', 10, 24);
+
   // Dune mound for desert flanks
   g.clear();
   g.fillStyle(PALETTE.sandDark, 1);

@@ -63,15 +63,36 @@ export const BALANCE = {
   renderCap: 110, // max unit sprites drawn; logical count can exceed this
   scrollSpeed: 150, // world px/sec the lane flows toward the player
   steerLerp: 0.18, // how snappily the crowd follows the finger
+  // Bow tiers (the Mali archers' weapon). dmg = per-crowd-unit damage/tick in an enemy
+  // clash (kept as Lanchester square-law: the crowd wins when C/E > sqrt(enemyDmgCoeff/dmg),
+  // so a modest size edge wins decisively). Tier also boosts barrel fire-rate + arrow count.
   weaponTiers: [
-    // dmg = per-crowd-unit damage/tick. Combat is Lanchester square-law: the crowd
-    // wins when C/E > sqrt(enemyDmgCoeff / dmg). Tuned so a modest size edge wins
-    // decisively and greedy multiplication pays off, while bad gate choices cascade.
-    { name: 'Spears', fireRate: 420, dmg: 0.16, color: 0xf6d77a },
-    { name: 'Bows', fireRate: 320, dmg: 0.22, color: 0xf3a64b },
-    { name: 'Cavalry', fireRate: 240, dmg: 0.28, color: 0xe8b43c },
-    { name: 'Royal Guard', fireRate: 180, dmg: 0.36, color: 0x9be8ff },
+    { name: 'Short Bows', dmg: 0.16, color: 0xf6d77a },
+    { name: 'War Bows', dmg: 0.22, color: 0xf3a64b },
+    { name: 'Composite Bows', dmg: 0.28, color: 0xe8b43c },
+    { name: 'Royal Archers', dmg: 0.36, color: 0x9be8ff },
   ],
   enemyDmgCoeff: 0.07, // per-enemy-unit damage/tick dealt to crowd (win boundary C/E ≈ 0.66)
   clashTickMs: 130, // attrition resolution cadence during a clash
+
+  // Archery: continuous volleys fired up the lane at descending barrels. More crowd +
+  // higher bow tier = more arrows, faster. This is the reinforcing loop: a bigger army
+  // breaks high-HP barrels in time, which grows the army. Tuned (with barrelSpeedMul's
+  // short window) so a starting crowd breaks ~hp4-5, a mid crowd ~hp10, a big crowd shreds
+  // whole pairs — so greedy high-HP kegs are a real gamble early and a reward once you snowball.
+  arrow: { speed: 700, lifespanMs: 1400 },
+  fire: {
+    baseInterval: 430, // ms between volleys at crowd 0 / tier 0
+    intervalPerUnit: 1.5, // faster as the crowd grows
+    intervalPerTier: 50,
+    minInterval: 150,
+    arrowsBase: 1,
+    arrowsPerUnits: 14, // +1 arrow per this many units
+    arrowsPerTier: 1,
+    arrowsMax: 12,
+  },
+  // Barrels roll DOWN faster than the lane flows, so you have limited time to shoot them.
+  barrelSpeedMul: 1.9,
+  // Damage a barrel deals to the crowd if it reaches them still alive: ceil(remHP * coeff).
+  barrelReachDmg: 0.5,
 };
