@@ -42,7 +42,15 @@ export class BattleScene extends Phaser.Scene {
     this.fireTimer = 9999; // ready to fire the instant a target appears
 
     this.lane = new Lane(this);
-    this.crowd = new Crowd(this, this.level.startCrowd);
+    // v6 STAGE CARRYOVER: only Level 1 starts at its `startCrowd` (the 1-soldier teaching moment).
+    // Levels 2+ INHERIT the army + weapon progression carried in the registry from the prior win.
+    const carryArmy = this.registry.get('carryArmy');
+    const startCount = (this.levelIndex > 0 && carryArmy) ? carryArmy : this.level.startCrowd;
+    this.crowd = new Crowd(this, startCount);
+    if (this.levelIndex > 0 && carryArmy) {
+      this.crowd.spread = Phaser.Math.Clamp(this.registry.get('carrySpread') || 1, 1, BALANCE.maxSpread);
+      this.crowd.rateTier = Phaser.Math.Clamp(this.registry.get('carryRateTier') || 0, 0, BALANCE.maxRateTier);
+    }
 
     this._hud();
     this._input();
@@ -109,8 +117,11 @@ export class BattleScene extends Phaser.Scene {
         // so the player reads the incoming count/shape before committing crowd vs weapon.
         const bl = new Barrel(this, 'L', e.left.hp, e.left.reward);
         const br = new Barrel(this, 'R', e.right.hp, e.right.reward);
-        bl.sibling = br; br.sibling = bl; // breaking one dismisses the other (exclusive choice)
+        bl.sibling = br; br.sibling = bl; // linked for reference only — v6: no auto-dismiss
         this.barrels.push(bl, br);
+        // v6: route the counter-wave DOWN THE MIDDLE GAP (between the two well-separated kegs)
+        // by default, so enemies walk the center channel and the player must juggle focus
+        // (shoot the wave down, then a keg, then back). A wave may still declare its own side.
         const w = e.wave;
         this._spawnWave(w.count, w.label || 'Raiders', w.side || 'C', w.shape || 'mixed', -60 - (w.gap || BALANCE.telegraphGap));
       } else if (e.type === 'enemy') {
@@ -152,6 +163,11 @@ export class BattleScene extends Phaser.Scene {
       } else if (shape === 'deep') {
         side = baseSide === 'C' ? 'C' : baseSide;
         y0 = y0base - i * 95; // a tight deep column on one lane
+      } else if (shape === 'gap') {
+        // v6: a column marching down the MIDDLE channel between a keg pair — the player must
+        // shoot these in the gap while also choosing/breaking a keg (multi-focus juggling).
+        side = 'C';
+        y0 = y0base - i * 90;
       } else {
         side = sides[i % sides.length];
         y0 = y0base - i * 120;
@@ -251,7 +267,8 @@ export class BattleScene extends Phaser.Scene {
 
       if (b.dead && !b.rewarded) {
         b.rewarded = true;
-        if (b.sibling && !b.sibling.dead && !b.sibling.done) b.sibling.dismiss(); // exclusive choice
+        // v6: NO auto-dismiss — the sibling keg keeps rolling on; the player may try for both
+        // (risk) or let it pass. It only matters if it reaches the column alive (chip below).
         this.crowd.applyOp(b.reward, b.x, b.y); // multiply pop + particles + sfx
         Juice.burst(this, b.x, b.y, PALETTE.goldLight, 22, 260);
         Juice.flash(this, 0xffe9a8, 80, 0.22);
@@ -325,6 +342,11 @@ export class BattleScene extends Phaser.Scene {
     this.sfx('win');
     const cur = this.registry.get('unlocked');
     if (this.levelIndex + 1 > cur && this.levelIndex + 1 < CHAPTER1.levels.length) this.registry.set('unlocked', this.levelIndex + 1);
+    // v6 STAGE CARRYOVER: persist the army you finished with + weapon progression so the NEXT
+    // level inherits it. (Cleared back to a fresh run from the map's "new game"/level-1 path.)
+    this.registry.set('carryArmy', Math.max(1, Math.round(this.crowd.count)));
+    this.registry.set('carrySpread', this.crowd.spread);
+    this.registry.set('carryRateTier', this.crowd.rateTier);
     this.crystalsEarned += 3; this.registry.set('crystals', this.registry.get('crystals') + 3);
     this.registry.get('save')(this.registry);
     this.time.delayedCall(700, () => this.scene.start('Result', {

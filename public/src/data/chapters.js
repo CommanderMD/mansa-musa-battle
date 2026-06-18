@@ -34,17 +34,27 @@ const weap = () => ({ op: 'arrow', step: 1 });
 /* buildLevel — generate a level's track from a compact spec. Wave SIZES are geometric
  * (config.waveSize: ~+14%/encounter, flattening near the end); barrel HP ramps with them so
  * breaking a keg stays real effort as your column (and its per-arrow punch) grows. */
+/* v6 STAGE CARRYOVER: only Level 1 starts at 1 soldier and uses the tiny CALIBRATION teaching
+ * encounter. Levels with meta.carryover=true INHERIT the prior level's army + weapon, so they
+ * SKIP the calibration (encounter 0 is a full ramped wave) and their baselines are sized large
+ * to keep an inherited (snowballed) army in a real fight. */
 function buildLevel(meta, encs, boss) {
   const total = encs.length;
+  const carry = !!meta.carryover;
   const track = [enemy(meta.teachDist, meta.teach, 'Scouts', 'mixed', 'C')];
   let dist = meta.firstDist;
   encs.forEach((e, i) => {
-    // Encounter 0 is the CALIBRATION — fixed small wave every level (you always restart at 1
-    // soldier). Encounters 1.. ramp geometrically from the per-level baseline.
-    const count = i === 0 ? meta.calib : waveSize(meta.base, i - 1, total - 1);
-    // Calibration keg is low-HP every level (a lone soldier must break it fast to grow in time);
-    // later kegs ramp with the waves so breaking stays real effort as your column grows.
-    const hp = i === 0 ? 5 : Math.max(3, Math.round(meta.barrelHp * Math.pow(meta.barrelRatio, i - 1)));
+    let count, hp;
+    if (carry) {
+      // No calibration: every encounter ramps geometrically from the (large) baseline so an
+      // inherited army faces proportionally bigger hordes from the very first clash.
+      count = waveSize(meta.base, i, total);
+      hp = Math.max(4, Math.round(meta.barrelHp * Math.pow(meta.barrelRatio, i)));
+    } else {
+      // Level 1 (1-soldier start): encounter 0 is the fixed-small CALIBRATION teaching moment.
+      count = i === 0 ? meta.calib : waveSize(meta.base, i - 1, total - 1);
+      hp = i === 0 ? 5 : Math.max(3, Math.round(meta.barrelHp * Math.pow(meta.barrelRatio, i - 1)));
+    }
     track.push({
       type: 'encounter', dist,
       left: { side: 'L', hp, reward: e.l },
@@ -78,33 +88,36 @@ export const CHAPTER1 = {
       ],
       { count: 44, name: 'Slaver Caravan' }
     ),
-    // L2 — baseline ~1.4× L1 (base 17). Faster lane. wide/deep trade off.
+    // L2 — CARRYOVER: inherits L1's army + weapon, so NO calibration and hordes are sized large
+    // for a snowballed column. Faster lane. wide/deep trade off, plus gap-walking columns.
     buildLevel(
-      { id: 'm2', name: 'Road to Walata', startCrowd: 1, speedMul: 1.08,
-        blurb: 'Faster raids — wide walls and deep columns trade off. Read each one.',
-        teachDist: 450, teach: 3, firstDist: 1200, gap: 1250, calib: 12, base: 19, barrelHp: 8, barrelRatio: 1.5 },
+      { id: 'm2', name: 'Road to Walata', startCrowd: 1, carryover: true, speedMul: 1.08,
+        blurb: 'Your army marches on from Niani — but the raids are bigger now. Read each wave.',
+        teachDist: 450, teach: 14, firstDist: 1200, gap: 1250, base: 80, barrelHp: 22, barrelRatio: 1.4 },
       [
-        { l: mul(4), r: weap(), shape: 'wide', label: 'Raiders', pickup: 'crystal' }, // CALIBRATION
-        { l: weap(), r: mul(3), shape: 'deep', label: 'Spear Column' },
-        { l: mul(3), r: weap(), shape: 'wide', label: 'War Band', pickup: 'gold' },
-        { l: weap(), r: mul(3), shape: 'deep', side: 'R', label: 'Deep Column' },
-        { l: mul(2), r: weap(), shape: 'mixed', side: 'L', label: 'Marauders' },
+        // v6: carryover levels use TEMPERED rewards (mostly additive + ×1.5) so an inherited army
+        // grows steadily rather than exploding. Enemies are sized to keep it a real fight.
+        { l: add(120), r: weap(), shape: 'wide', label: 'Raiders', pickup: 'crystal' },
+        { l: weap(), r: add(160), shape: 'gap', label: 'Spear Column' },
+        { l: mul(2), r: weap(), shape: 'wide', label: 'War Band', pickup: 'gold' },
+        { l: weap(), r: add(220), shape: 'deep', side: 'R', label: 'Deep Column' },
+        { l: add(260), r: weap(), shape: 'gap', label: 'Marauders' },
       ],
-      { count: 78, name: 'Desert Warlord' }
+      { count: 360, name: 'Desert Warlord' }
     ),
-    // L3 — baseline ~1.4× L2 (base 24). Fastest. Largest hordes.
+    // L3 — CARRYOVER: inherits L2's (larger) army; biggest hordes, fastest lane.
     buildLevel(
-      { id: 'm3', name: 'Timbuktu — City of Gold', startCrowd: 1, speedMul: 1.14,
-        blurb: 'The fastest, largest hordes. Read every wave and keep both edges sharp.',
-        teachDist: 450, teach: 3, firstDist: 1200, gap: 1300, calib: 11, base: 26, barrelHp: 11, barrelRatio: 1.5 },
+      { id: 'm3', name: 'Timbuktu — City of Gold', startCrowd: 1, carryover: true, speedMul: 1.14,
+        blurb: 'The fastest, largest hordes yet. Keep both edges sharp and the gap covered.',
+        teachDist: 450, teach: 40, firstDist: 1200, gap: 1300, base: 240, barrelHp: 48, barrelRatio: 1.4 },
       [
-        { l: mul(4), r: weap(), shape: 'wide', label: 'Raiders', pickup: 'gold' }, // CALIBRATION
-        { l: weap(), r: mul(3), shape: 'deep', label: 'Spear Column' },
-        { l: mul(3), r: weap(), shape: 'wide', label: 'War Band', pickup: 'crystal' },
-        { l: weap(), r: mul(3), shape: 'deep', side: 'R', label: 'Deep Column' },
-        { l: mul(2), r: weap(), shape: 'wide', label: 'Horde' },
+        { l: add(400), r: weap(), shape: 'wide', label: 'Raiders', pickup: 'gold' },
+        { l: weap(), r: add(500), shape: 'gap', label: 'Spear Column' },
+        { l: mul(2), r: weap(), shape: 'wide', label: 'War Band', pickup: 'crystal' },
+        { l: weap(), r: add(700), shape: 'deep', side: 'R', label: 'Deep Column' },
+        { l: add(800), r: weap(), shape: 'gap', label: 'Horde' },
       ],
-      { count: 130, name: 'Sahel Conqueror' }
+      { count: 1400, name: 'Sahel Conqueror' }
     ),
   ],
 };

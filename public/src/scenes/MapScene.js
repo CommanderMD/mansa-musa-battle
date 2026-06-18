@@ -127,7 +127,12 @@ export class MapScene extends Phaser.Scene {
     const lvl = CHAPTER1.levels[this.selected];
     this.infoName.setText(lvl.name);
     this.infoBlurb.setText(lvl.blurb);
-    this.infoStats.setText(`Start: ${lvl.startCrowd} soldier${lvl.startCrowd === 1 ? '' : 's'}   ·   Boss: ${lvl.boss.count}`);
+    // v6: L2/L3 inherit the carried army; show that instead of a misleading "1 soldier" start.
+    const carry = this.registry.get('carryArmy');
+    const startTxt = (this.selected > 0 && carry)
+      ? `Start: ~${carry} soldiers (carried)`
+      : `Start: ${lvl.startCrowd} soldier${lvl.startCrowd === 1 ? '' : 's'}`;
+    this.infoStats.setText(`${startTxt}   ·   Boss: ${lvl.boss.count}`);
   }
 
   _infoPanel() {
@@ -159,6 +164,13 @@ export class MapScene extends Phaser.Scene {
     bg.on('pointerout', () => btn.setScale(1));
     bg.on('pointerdown', () => {
       this.registry.get('sfx')('weapon');
+      // v6 STAGE CARRYOVER: launching LEVEL 1 begins a FRESH run — clear any carried army/weapon
+      // so you start at 1 soldier (the teaching moment). L2/L3 keep the carry from the prior win.
+      if (this.selected === 0) {
+        this.registry.set('carryArmy', null);
+        this.registry.set('carrySpread', 1);
+        this.registry.set('carryRateTier', 0);
+      }
       this.cameras.main.fade(280, 20, 14, 6);
       this.time.delayedCall(280, () => this.scene.start('Battle', { levelIndex: this.selected }));
     });

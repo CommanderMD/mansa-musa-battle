@@ -5,8 +5,8 @@
  * only swap data/ + palette. Keep magic numbers OUT of the scenes; put them here.
  */
 
-/* Build version — bump to v5, v6… for future refinements. Shown on boot/map. */
-export const VERSION = 'v5';
+/* Build version — bump to v6, v7… for future refinements. Shown on boot/map. */
+export const VERSION = 'v6';
 
 /* Logical design resolution (mobile portrait, ~9:16). Phaser FIT-scales this. */
 export const GAME_W = 480;
