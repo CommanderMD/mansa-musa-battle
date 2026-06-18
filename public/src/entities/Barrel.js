@@ -25,8 +25,10 @@ const HIT_CORE = 26; // x half-width of the hittable CORE (smaller than the big 
 const SEP_FACTOR = 0.74; // v6: how far L/R kegs sit from lane center (× lane half-width). Wider
 //                          than v5 (0.52) so the pair NEVER overlaps and leaves a real middle lane
 //                          (center channel) for enemies to walk down.
-const ROLL_SPEED = 0.0026; // radians/ms — roll cadence driving the horizontal-roll wobble
-const BASE_ROT = Math.PI / 2; // lie the keg ACROSS the lane (horizontal), rolling toward player
+const ROLL_SPEED = 0.010; // rad/ms phase for the rolling illusion (hoop-scroll + rock)
+const BASE_ROT = 0; // the 'barrel' texture is ALREADY drawn horizontal (72x48 lying sideways);
+//                     keep rotation 0 so it reads as a keg lying ACROSS the lane. Do NOT add
+//                     PI/2 (that stands it up vertical — the v6.0 bug).
 
 // Weapon barrels (op:'arrow') read blue/crystal with an arrow icon; crowd barrels read
 // gold/green — so the two upgrade paths are instantly distinguishable on the lane.
@@ -103,17 +105,20 @@ export class Barrel {
 
   update(dt, scrollPx) {
     this.y += scrollPx;
-    this.roll += dt * ROLL_SPEED; // rolling spin drives the horizontal-roll wobble
+    this.roll += dt * ROLL_SPEED; // phase for the rolling illusion
     const sc = depthScale(this.y) * BARREL_SCALE;
     const x = this.x;
     const labelSc = Phaser.Math.Clamp(depthScale(this.y) * 1.25, 0.7, 1.4);
     const topOff = 42 * depthScale(this.y); // above the big keg
-    // v6: keep it HORIZONTAL (baseRot) with a subtle wobble + squash so it reads as a sideways
-    // barrel ROLLING toward the player, not spinning end-over-end.
-    const wob = Math.sin(this.roll) * 0.07;
-    const squash = 1 + Math.cos(this.roll) * 0.06;
-    this.sprite.setPosition(x, this.y).setScale(sc, sc * squash)
-      .setRotation(this.baseRot + wob).setDepth(330 + this.y * 0.1);
+    // v6.1: the texture is a HORIZONTAL keg (rot 0). Sell "rolling toward you" with:
+    //  • a small rocking tilt (±) as the hoops turn, and
+    //  • a vertical squash-bob (taller/shorter) like a cylinder bumping along the ground,
+    //  • plus a tiny vertical hop synced to the roll.
+    const rock = Math.sin(this.roll) * 0.10;           // gentle rotational rock around flat axis
+    const squashY = 1 + Math.sin(this.roll * 2) * 0.07; // vertical squash/stretch (rolling bump)
+    const hop = Math.abs(Math.cos(this.roll)) * 2.0 * depthScale(this.y); // small ground bounce
+    this.sprite.setPosition(x, this.y - hop).setScale(sc, sc * squashY)
+      .setRotation(this.baseRot + rock).setDepth(330 + this.y * 0.1);
     this.rewardTxt.setPosition(x, this.y).setScale(labelSc).setDepth(335 + this.y * 0.1);
     this.hpBg.setPosition(x, this.y - topOff).setScale(labelSc);
     this.hpTxt.setPosition(x, this.y - topOff).setScale(labelSc);

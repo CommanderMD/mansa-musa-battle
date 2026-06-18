@@ -103,6 +103,18 @@ export const BALANCE = {
   telegraphGap: 360,
   // Damage a barrel deals to the crowd if it reaches them still alive: ceil(remHP * coeff).
   barrelReachDmg: 0.5,
+
+  // ── v6.1 PROPORTIONAL ENEMY SCALING (the crowd-runner standard) ──
+  // Enemies grow IN PROPORTION to your current army so they stay a real threat no matter how big
+  // you snowball (like Count Masters: the opposing crowd scales to yours; the lane width doesn't).
+  // A spawned wave's count = max(authoredCount, round(army × waveArmyFrac)), clamped to a sane
+  // band. The boss = army × bossArmyFrac. This keeps "challenge ~linear, your power exponential":
+  // you always feel strong, but a careless line-up still bleeds units.
+  proportionalEnemies: true,
+  waveArmyFrac: 0.32, // each wave ≈ this fraction of your CURRENT army (beatable, but real)
+  bossArmyFrac: 1.15, // boss ≈ this × your army at the gate (a true final stand)
+  enemyScaleMax: 4.0, // never let a single wave exceed authored × this (anti-spike safety)
+  enemyScaleFloor: 1.0, // never shrink a wave below its authored count
 };
 
 /* Wave size for encounter `i` (0-based) of a level: geometric ramp from `base`, flattening over

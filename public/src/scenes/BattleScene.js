@@ -133,11 +133,25 @@ export class BattleScene extends Phaser.Scene {
     if (!this.bossSpawned && dist >= this.level.length) {
       this.bossSpawned = true;
       const b = this.level.boss;
-      // Boss = one large dense block (out-DPS it with aligned fire or get overrun).
-      this.enemies.push(new EnemyFormation(this, b.count, b.name, true, 'C', -60));
+      // Boss = one large dense block scaled to your army (a true final stand). Out-DPS it or fall.
+      const bossCount = this._scaleEnemyCount(b.count, true);
+      this.enemies.push(new EnemyFormation(this, bossCount, b.name, true, 'C', -60));
       this._banner('FINAL STAND', PALETTE.enemy, b.name);
       this.sfx('clash');
     }
+  }
+
+  /* v6.1 PROPORTIONAL SCALING: grow an authored enemy count to track the player's CURRENT army,
+   * so waves stay a real threat after the snowball (crowd-runner standard). Clamped so a wave is
+   * never smaller than authored and never an unfair spike. */
+  _scaleEnemyCount(authored, isBoss = false) {
+    if (!BALANCE.proportionalEnemies) return authored;
+    const army = Math.max(1, Math.round(this.crowd.count));
+    const frac = isBoss ? BALANCE.bossArmyFrac : BALANCE.waveArmyFrac;
+    const want = Math.round(army * frac);
+    const lo = Math.round(authored * BALANCE.enemyScaleFloor);
+    const hi = Math.round(authored * BALANCE.enemyScaleMax);
+    return Phaser.Math.Clamp(Math.max(authored, want), lo, hi);
   }
 
   /* A wave streams down as small CLUSTERS. SHAPE drives which upgrade counters it:
@@ -148,6 +162,7 @@ export class BattleScene extends Phaser.Scene {
    *  - 'mixed' → spread across sides AND depth (the general case).
    * Clusters you can't cover slip through and cost units 1-for-1 on contact. */
   _spawnWave(total, label, baseSide, shape, y0base) {
+    total = this._scaleEnemyCount(total); // v6.1: scale to the player's current army
     const sz = BALANCE.enemyClusterSize;
     const n = Math.max(1, Math.round(total / sz));
     const sides = baseSide === 'L' ? ['L', 'C', 'R'] : baseSide === 'R' ? ['R', 'C', 'L'] : ['C', 'L', 'R'];
